@@ -1,0 +1,1007 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>보면대</title>
+<meta name="description" content="이미지·PDF 악보를 정리하고 필기·자동 넘김·메트로놈·튜너·녹음으로 연주하는 악보 뷰어">
+<meta name="theme-color" content="#1c2230">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="보면대">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152.png">
+<link rel="apple-touch-icon" sizes="167x167" href="icons/icon-167.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<script>window.PDF_WORKER='lib/pdf.worker.min.js'</script>
+</head>
+<body>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<script src="lib/pdf.min.js"></script>
+<style>
+/* Layout: score fills the screen like a page on a music stand; frosted pills float over it (tabs top, tools bottom); the library slides in from the left as a shelf of book covers. */
+:root{
+  --stage:#d6d9de; --glass:rgba(255,255,255,.80); --glass-2:rgba(255,255,255,.96); --ink:#1d2129; --muted:#666e7b; --line:rgba(30,36,46,.12);
+  --accent:#9a651a; --accent-soft:rgba(154,101,26,.13); --accent-ink:#fff; --rec:#cf3a30; --ok:#2f8150; --raise:#ffffff;
+  --shadow:0 2px 6px rgba(20,24,32,.08),0 12px 32px rgba(20,24,32,.14);
+  --f-display:"Gowun Batang","Nanum Myeongjo",Georgia,serif;
+  --f-body:"Noto Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --st:env(safe-area-inset-top,0px); --sb:env(safe-area-inset-bottom,0px); --sl:env(safe-area-inset-left,0px); --sr:env(safe-area-inset-right,0px);
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --stage:#0c0e11; --glass:rgba(34,38,45,.80); --glass-2:rgba(40,45,53,.97); --ink:#ebe8e2; --muted:#9ca3ae; --line:rgba(255,255,255,.10);
+  --accent:#dcaa52; --accent-soft:rgba(220,170,82,.16); --accent-ink:#1a1306; --rec:#ea5a50; --ok:#61c389; --raise:#262b33;
+  --shadow:0 2px 6px rgba(0,0,0,.4),0 12px 32px rgba(0,0,0,.45); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --stage:#0c0e11; --glass:rgba(34,38,45,.80); --glass-2:rgba(40,45,53,.97); --ink:#ebe8e2; --muted:#9ca3ae; --line:rgba(255,255,255,.10);
+  --accent:#dcaa52; --accent-soft:rgba(220,170,82,.16); --accent-ink:#1a1306; --rec:#ea5a50; --ok:#61c389; --raise:#262b33;
+  --shadow:0 2px 6px rgba(0,0,0,.4),0 12px 32px rgba(0,0,0,.45); color-scheme:dark}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;overscroll-behavior:none;-webkit-touch-callout:none;-webkit-text-size-adjust:100%;background:var(--stage);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.5;overflow:hidden;-webkit-tap-highlight-color:transparent}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;touch-action:manipulation}
+button:disabled{opacity:.4;cursor:not-allowed}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.glass{background:var(--glass);-webkit-backdrop-filter:blur(18px) saturate(1.5);backdrop-filter:blur(18px) saturate(1.5);box-shadow:var(--shadow);border:1px solid var(--line)}
+
+/* stage */
+#stage{position:fixed;inset:0;overflow:auto;touch-action:pan-x pan-y;user-select:none;-webkit-user-select:none}
+.spread{transform-origin:50% 50%;min-height:100%;min-width:100%;width:max-content;box-sizing:border-box;display:flex;align-items:center;justify-content:center;padding:calc(8px + var(--st)) calc(8px + var(--sr)) calc(8px + var(--sb)) calc(8px + var(--sl))}
+#stage.scroll .spread{flex-direction:column;justify-content:flex-start;gap:14px;width:100%;padding-top:calc(70px + var(--st));padding-bottom:calc(150px + var(--sb))}
+.sheet{position:relative;background:#fff;box-shadow:0 2px 16px rgba(0,0,0,.22);flex:none}
+.spread.two .sheet:first-child{box-shadow:0 2px 16px rgba(0,0,0,.22),inset -14px 0 18px -14px rgba(0,0,0,.28)}
+.spread.two .sheet:last-child{box-shadow:0 2px 16px rgba(0,0,0,.22),inset 14px 0 18px -14px rgba(0,0,0,.28)}
+.sheet canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.sheet .ann{pointer-events:none}
+#stage.drawing .sheet .ann{pointer-events:auto;touch-action:none;cursor:crosshair}
+.pno{position:absolute;bottom:6px;right:8px;font-family:var(--f-mono);font-size:11px;color:#777;background:rgba(255,255,255,.85);padding:0 5px;border-radius:4px;display:none}
+#stage.scroll .pno{display:block}
+.blank{display:grid;place-items:center;text-align:center;gap:14px;color:var(--muted);max-width:340px;margin:auto}
+.blank b{display:block;font-family:var(--f-display);font-size:24px;color:var(--ink)}
+.turn-flash{position:fixed;top:0;bottom:0;width:16%;pointer-events:none;opacity:0;transition:opacity .3s;z-index:2}
+.turn-flash.l{left:0;background:linear-gradient(90deg,var(--accent-soft),transparent)}
+.turn-flash.r{right:0;background:linear-gradient(270deg,var(--accent-soft),transparent)}
+.turn-flash.show{opacity:1;transition:none}
+#atBar{position:fixed;left:0;top:0;height:3px;width:0;background:var(--accent);z-index:30}
+
+/* chrome */
+.chrome{transition:opacity .2s,transform .2s}
+body.noui .chrome,body.perf .chrome{opacity:0;pointer-events:none}
+body.noui .chrome.top,body.perf .chrome.top{transform:translateY(-12px)}
+body.noui .chrome.bottom,body.perf .chrome.bottom{transform:translateY(12px)}
+.top{position:fixed;z-index:10;top:calc(10px + var(--st));left:calc(12px + var(--sl));right:calc(12px + var(--sr));display:flex;align-items:center;gap:10px;pointer-events:none}
+.top>*{pointer-events:auto}
+.pill-btn{display:inline-flex;align-items:center;gap:4px;height:44px;padding:0 16px 0 12px;border-radius:22px;font-weight:500;flex:none}
+.round{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;flex:none}
+.round.on{color:var(--accent);background:var(--accent-soft);border-color:var(--accent)}
+.tabs{flex:1;min-width:0;height:44px;border-radius:22px;display:flex;align-items:center;padding:3px;gap:2px;overflow-x:auto;scrollbar-width:none;box-sizing:border-box}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:1 1 0;min-width:120px;max-width:300px;height:36px;border-radius:18px;border:0;background:transparent;display:flex;align-items:center;gap:8px;padding:0 8px;font-size:13px;color:var(--muted)}
+.tab .sw{width:9px;height:20px;border-radius:2px;flex:none}
+.tab .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}
+.tab+.tab:not(.on){box-shadow:-1px 0 0 var(--line)}
+.tab.on{background:var(--glass-2);color:var(--ink);font-weight:500;box-shadow:0 1px 4px rgba(0,0,0,.12);flex:1.6 1 0}
+.tab .x,.tab .inf{display:none;width:24px;height:24px;border-radius:50%;place-items:center;color:var(--muted);flex:none}
+.tab.on .x,.tab.on .inf{display:grid}
+.tab .x:hover,.tab .inf:hover{background:var(--accent-soft);color:var(--ink)}
+.tab .x svg.i,.tab .inf svg.i{width:17px;height:17px}
+.tab-empty{padding:0 14px;color:var(--muted);font-size:13px;white-space:nowrap}
+.bottom{position:fixed;z-index:10;left:calc(12px + var(--sl));right:calc(12px + var(--sr));bottom:calc(12px + var(--sb));display:flex;flex-direction:column;gap:12px;pointer-events:none}
+.bottom>*{pointer-events:auto}
+.scrub{position:relative;height:30px;display:flex;align-items:center;gap:10px;margin:0 6px}
+.scrub .track{position:relative;flex:1;height:30px}
+.scrub .rail{position:absolute;left:0;right:0;top:13px;height:4px;border-radius:2px;background:rgba(120,128,140,.35)}
+.scrub .fill{position:absolute;left:0;top:13px;height:4px;border-radius:2px;background:var(--accent);opacity:.7}
+.scrub .dot{position:absolute;top:11px;width:8px;height:8px;margin-left:-4px;border-radius:50%;background:var(--ink);opacity:.65;pointer-events:none}
+.scrub input{position:absolute;inset:0;width:100%;margin:0;opacity:0;cursor:pointer}
+.scrub .knob{position:absolute;top:2px;width:26px;height:26px;margin-left:-13px;border-radius:50%;background:var(--glass-2);box-shadow:0 1px 5px rgba(0,0,0,.3);border:1px solid var(--line);pointer-events:none}
+.scrub .lbl{font-family:var(--f-mono);font-size:12px;font-variant-numeric:tabular-nums;padding:2px 10px;border-radius:12px;white-space:nowrap;max-width:50%;overflow:hidden;text-overflow:ellipsis}
+.pills{display:grid;grid-template-columns:1fr auto 1fr;align-items:end;gap:10px}
+.pills>.l{justify-self:start}.pills>.r{justify-self:end}
+.pill{display:flex;align-items:center;border-radius:30px;padding:4px;gap:2px;height:60px;box-sizing:border-box}
+.tool{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:74px;height:52px;border:0;border-radius:26px;background:transparent;font-size:11px;color:var(--ink);padding:0 8px}
+.tool:hover{background:rgba(127,127,127,.12)}
+.tool.on{background:var(--accent-soft);color:var(--accent)}
+.tool.live{color:var(--rec)}
+.pill .fold{width:36px;height:52px;border:0;background:transparent;border-radius:26px;display:grid;place-items:center;color:var(--muted)}
+
+/* popovers */
+#pop{position:fixed;z-index:12;width:360px;max-width:calc(100% - 24px);max-height:min(66vh,620px);border-radius:22px;display:flex;flex-direction:column;overflow:hidden;box-sizing:border-box}
+#pop.at-l{left:calc(12px + var(--sl));bottom:calc(126px + var(--sb))}
+#pop.at-c{left:50%;transform:translateX(-50%);bottom:calc(126px + var(--sb))}
+#pop.at-tr{right:calc(12px + var(--sr));top:calc(64px + var(--st))}
+#pop.wide{left:calc(12px + var(--sl));right:calc(12px + var(--sr));width:auto;max-width:none;transform:none;max-height:none}
+#pop header{display:flex;align-items:center;gap:8px;padding:14px 10px 6px 18px}
+#pop header h3{flex:1;margin:0;font-family:var(--f-display);font-size:18px}
+.pbody{overflow:auto;padding:4px 18px 18px;display:flex;flex-direction:column;gap:14px}
+.grp{display:flex;flex-direction:column;gap:8px}
+.lbl{font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--muted)}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.row>*{min-width:0}
+.seg{display:flex;background:rgba(127,127,127,.14);border-radius:10px;padding:3px;gap:2px}
+.seg button{flex:1;border:0;background:transparent;height:30px;border-radius:8px;font-size:13px;white-space:nowrap;padding:0 8px}
+.seg button.on{background:var(--raise);box-shadow:0 1px 3px rgba(0,0,0,.15);font-weight:700;color:var(--accent)}
+.field{display:flex;flex-direction:column;gap:4px;flex:1}
+.field span{font-size:12px;color:var(--muted)}
+.tx{height:38px;border-radius:10px;border:1px solid var(--line);background:var(--raise);padding:0 11px;width:100%;box-sizing:border-box}
+textarea.tx{height:70px;padding:8px 11px;resize:vertical}
+.num{width:78px;font-family:var(--f-mono)}
+input[type=range]{accent-color:var(--accent)}
+.rng{display:flex;align-items:center;gap:10px}
+.rng input{flex:1;min-width:0}
+.rng output{font-family:var(--f-mono);font-size:12px;min-width:46px;text-align:right}
+.rng .k{font-size:12px;min-width:40px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:38px;padding:0 14px;border-radius:12px;border:1px solid var(--line);background:var(--raise);font-weight:500;white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.danger{color:var(--rec)}
+.btn.sm{height:32px;padding:0 10px;font-size:13px;border-radius:10px}
+.btn.wide{flex:1}
+.btn svg.i{width:18px;height:18px}
+.ib{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:10px;border:0;background:transparent;color:inherit;flex:none}
+.ib:hover{background:rgba(127,127,127,.15)}
+.ib svg.i{width:19px;height:19px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{height:30px;padding:0 11px;border-radius:15px;border:1px solid var(--line);background:var(--raise);font-size:12px}
+.chip:hover,.chip.on{border-color:var(--accent);color:var(--accent)}
+.lst{display:flex;flex-direction:column;gap:6px}
+.li{display:flex;align-items:center;gap:8px;padding:7px 6px 7px 12px;border-radius:12px;background:var(--raise);border:1px solid var(--line)}
+.li.cur{border-color:var(--accent)}
+.li .g{flex:1;min-width:0;text-align:left;border:0;background:none;padding:0}
+.li .g b{display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.li .g span{font-size:12px;color:var(--muted)}
+.hint{font-size:12px;color:var(--muted);margin:0}
+.notice{background:var(--accent-soft);border-radius:12px;padding:10px 12px;font-size:13px}
+.kbd{font-family:var(--f-mono);font-size:11px;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px;background:var(--raise)}
+.check{display:flex;align-items:center;gap:8px;font-size:13px}
+.check input{accent-color:var(--accent);width:17px;height:17px;flex:none}
+.big{font-family:var(--f-mono);font-size:46px;font-weight:500;text-align:center;line-height:1;font-variant-numeric:tabular-nums}
+.beats{display:flex;justify-content:center;gap:10px;padding:4px 0}
+.beats i{width:15px;height:15px;border-radius:50%;background:rgba(127,127,127,.25)}
+.beats i.acc{outline:2px solid var(--accent-soft);outline-offset:2px}
+.beats i.hit{background:var(--accent)}
+.rec-btn{width:72px;height:72px;border-radius:50%;border:4px solid rgba(207,58,48,.3);background:var(--raise);display:grid;place-items:center;margin:0 auto}
+.rec-btn i{width:30px;height:30px;border-radius:50%;background:var(--rec);transition:all .15s}
+.rec-btn.on i{border-radius:6px;width:26px;height:26px}
+.meter{height:6px;border-radius:3px;background:rgba(127,127,127,.2);overflow:hidden;width:100%}
+.meter i{display:block;height:100%;width:0;background:var(--ok)}
+audio{width:100%;height:36px}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:12px}
+.pcell{display:flex;flex-direction:column;gap:4px;align-items:center;min-width:0}
+.pcell button.th{padding:0;border:2px solid transparent;border-radius:4px;background:#fff;width:100%;aspect-ratio:3/4;max-width:100%;display:grid;place-items:center;overflow:hidden}
+.pcell.cur button.th{border-color:var(--accent)}
+.pcell canvas{max-width:100%;max-height:100%}
+.pcell .acts{display:flex}
+.pcell .acts .ib{width:24px;height:26px}
+.pcell .acts .ib svg.i{width:15px;height:15px}
+.pcell small{font-family:var(--f-mono);font-size:11px;color:var(--muted)}
+.tuner-dial{position:relative;height:110px;overflow:hidden}
+.tuner-dial .scale{position:absolute;left:8%;right:8%;bottom:14px;height:2px;background:rgba(127,127,127,.3)}
+.tuner-dial .tick{position:absolute;bottom:14px;width:2px;height:10px;background:rgba(127,127,127,.5);margin-left:-1px}
+.tuner-dial .tick.z{height:22px;background:var(--ok)}
+.tuner-dial .needle{position:absolute;left:50%;bottom:14px;width:3px;height:80px;margin-left:-1.5px;background:var(--rec);border-radius:2px;transform-origin:50% 100%;transition:transform .12s}
+.tuner-dial .needle.ok{background:var(--ok)}
+.tuner-note{text-align:center;line-height:1}
+.tuner-note b{font-family:var(--f-display);font-size:44px}
+.tuner-note span{display:block;font-family:var(--f-mono);font-size:12px;color:var(--muted);margin-top:6px}
+.strings{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+.strings button{min-width:46px;height:44px;border-radius:12px;border:1px solid var(--line);background:var(--raise);font-family:var(--f-mono);font-size:13px;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.15}
+.strings button small{font-size:10px;color:var(--muted)}
+.strings button.hit{border-color:var(--ok);color:var(--ok)}
+.kb{position:relative;height:150px;display:flex;touch-action:none;user-select:none;-webkit-user-select:none;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
+.kb .w{flex:1;border:0;border-right:1px solid #cfd2d6;background:linear-gradient(#fff,#f2f3f5);position:relative;display:flex;align-items:flex-end;justify-content:center;padding:0 0 6px;font-family:var(--f-mono);font-size:10px;color:#888}
+.kb .w.dn{background:linear-gradient(#efe1c6,#e2cfa9)}
+.kb .b{position:absolute;top:0;height:60%;border:0;border-radius:0 0 5px 5px;background:linear-gradient(#2a2d33,#111317);z-index:2;padding:0}
+.kb .b.dn{background:linear-gradient(#6a5530,#3b2f18)}
+
+/* drawing bar */
+#drawbar{position:fixed;z-index:11;left:50%;transform:translateX(-50%);bottom:calc(12px + var(--sb));border-radius:22px;padding:6px;display:flex;flex-direction:column;gap:6px;max-width:calc(100% - 24px);box-sizing:border-box}
+#drawbar .tools{display:flex;align-items:center;gap:2px;flex-wrap:wrap;justify-content:center}
+#drawbar .sep{width:1px;height:26px;background:var(--line);margin:0 4px}
+#drawbar .ib.on{background:var(--accent-soft);color:var(--accent)}
+.swc{width:26px;height:26px;border-radius:50%;border:2px solid var(--glass-2);box-shadow:0 0 0 1px var(--line);margin:0 2px;padding:0}
+.swc.on{box-shadow:0 0 0 2px var(--accent)}
+#drawbar input[type=range]{width:90px}
+.stamps{display:flex;gap:4px;flex-wrap:wrap;justify-content:center;max-width:640px}
+.stamps button{min-width:34px;height:32px;border-radius:9px;border:1px solid var(--line);background:var(--raise);font-family:var(--f-display);font-size:16px;font-style:italic;padding:0 6px}
+.stamps button.on{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.stamps .tx{width:120px;height:32px}
+
+/* library */
+#scrim{position:fixed;inset:0;z-index:19;background:rgba(0,0,0,.08)}
+#lib{position:fixed;z-index:20;top:calc(10px + var(--st));bottom:calc(10px + var(--sb));left:calc(10px + var(--sl));width:min(480px,calc(100% - 20px));border-radius:28px;display:flex;flex-direction:column;overflow:hidden;background:var(--glass-2)}
+.lib-head{display:flex;align-items:center;gap:6px;padding:14px 14px 6px}
+.lib-head .seg{flex:1;max-width:300px;margin:0 auto;border-radius:20px}
+.lib-head .seg button{height:34px;border-radius:17px}
+.lib-bar{display:flex;align-items:center;gap:4px;padding:6px 14px 8px}
+.lib-bar .filter{display:inline-flex;align-items:center;gap:4px;height:34px;padding:0 10px;border-radius:10px;border:0;background:transparent;font-weight:500;max-width:52%;min-width:0}
+.lib-bar .filter span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lib-bar .filter:hover{background:rgba(127,127,127,.12)}
+.lib-bar .grow{flex:1}
+.lib-bar .txt{border:0;background:transparent;height:34px;padding:0 10px;border-radius:10px;font-weight:500}
+.lib-bar .txt.on{color:var(--accent)}
+.lib-search{margin:0 14px 8px;display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;border-radius:12px;background:rgba(127,127,127,.12)}
+.lib-search input{border:0;outline:0;background:transparent;flex:1;min-width:0}
+.lib-body{flex:1;overflow:auto;padding:0 16px 20px}
+.lib-sec{display:flex;align-items:center;gap:8px;margin:12px 4px 12px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.lib-sec h4{margin:0;font-size:16px;font-weight:500;color:var(--muted)}
+.lib-sec .grow{flex:1}
+.shelf{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:20px 14px}
+.bk{position:relative;display:flex;flex-direction:column;gap:6px;min-width:0}
+.bk .ttl{font-size:12.5px;line-height:1.3;color:var(--muted);text-align:center;height:2.6em;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.bk button.cv{padding:0;border:0;background:none;display:block;width:100%;transition:transform .15s}
+.bk button.cv:hover{transform:translateY(-3px)}
+.book{position:relative;aspect-ratio:3/4.1;max-width:100%;border-radius:2px 5px 5px 2px;overflow:hidden;box-shadow:2px 3px 8px rgba(0,0,0,.25),inset -2px 0 0 rgba(0,0,0,.15);background:var(--c)}
+.book::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,rgba(255,255,255,.18),transparent 40%,rgba(0,0,0,.12));pointer-events:none}
+.book .spine{position:absolute;left:0;top:0;bottom:0;width:13%;background:repeating-linear-gradient(to bottom,#f6f6f4 0 7px,#141414 7px 8.4px);box-shadow:inset -1px 0 0 rgba(0,0,0,.4)}
+.book .label{position:absolute;left:22%;right:8%;top:10%;padding:5px 6px;background:rgba(255,255,255,.9);color:#222;font-family:var(--f-display);font-size:11px;line-height:1.25;text-align:center;font-weight:700;max-height:44%;overflow:hidden;word-break:keep-all}
+.book .label span{display:block;font-weight:400;font-size:9.5px;color:#555;margin-top:2px}
+.book .clef{position:absolute;right:10%;bottom:8%;width:30%;opacity:.55}
+.book.page img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top}
+.bk .cover-wrap{position:relative}
+.bk .inf{position:absolute;right:-6px;bottom:-6px;width:22px;height:22px;border-radius:50%;border:0;background:#6d727b;color:#fff;display:grid;place-items:center;font-size:12px;font-weight:700;font-family:Georgia,serif;font-style:italic;z-index:2}
+.bk .favm{position:absolute;top:6px;right:6px;color:#f3c242;z-index:2;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}
+.bk .favm svg.i{width:18px;height:18px;fill:currentColor}
+.bk .sel{position:absolute;top:-6px;left:-6px;width:24px;height:24px;border-radius:50%;background:var(--raise);border:2px solid var(--muted);z-index:3;display:grid;place-items:center;pointer-events:none}
+.bk.picked .sel{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.bk.picked .sel svg.i{width:14px;height:14px;stroke-width:3}
+.add-tile .book{background:transparent;border:2px dashed var(--muted);box-shadow:none;display:grid;place-items:center;color:var(--muted);opacity:.7;box-sizing:border-box}
+.add-tile .book::after{display:none}
+.selbar{display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--line)}
+.selbar .btn{flex:1}
+.set-row{display:flex;align-items:center;gap:10px;padding:8px;border-radius:14px;background:var(--raise);border:1px solid var(--line)}
+.set-row .n{font-family:var(--f-mono);color:var(--accent);width:22px;text-align:right;flex:none}
+.set-row .mini{width:34px;flex:none}
+.set-row .mini .book .label,.set-row .mini .book .clef{display:none}
+.set-row .t{flex:1;min-width:0}
+.set-row .t b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.set-row .t span{font-size:12px;color:var(--muted)}
+.empty{grid-column:1/-1;border:1.5px dashed var(--line);border-radius:16px;padding:30px 16px;text-align:center;color:var(--muted)}
+.empty b{display:block;color:var(--ink);font-family:var(--f-display);font-size:17px;margin-bottom:4px}
+.dropzone{position:fixed;inset:0;z-index:70;background:var(--accent-soft);border:3px dashed var(--accent);display:grid;place-items:center;font-family:var(--f-display);font-size:24px;pointer-events:none}
+#perfExit{position:fixed;z-index:15;top:calc(10px + var(--st));right:calc(12px + var(--sr));opacity:.28;height:34px;padding:0 14px;border-radius:17px;font-size:12px}
+#perfExit:hover{opacity:1}
+.countin{position:fixed;inset:0;z-index:40;display:grid;place-items:center;pointer-events:none}
+.countin b{font-family:var(--f-display);font-size:130px;color:var(--accent);text-shadow:0 4px 30px rgba(0,0,0,.3)}
+#modal{position:fixed;inset:0;z-index:60;background:rgba(10,12,16,.4);display:grid;place-items:center;padding:16px}
+.dlg{width:100%;max-width:440px;max-height:calc(100% - 32px);overflow:auto;background:var(--glass-2);border-radius:22px;box-shadow:var(--shadow);border:1px solid var(--line);padding:22px;display:flex;flex-direction:column;gap:14px;box-sizing:border-box}
+.dlg h3{margin:0;font-family:var(--f-display);font-size:20px}
+.dlg-body{display:flex;flex-direction:column;gap:12px}
+.dlg-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.menu-list{display:flex;flex-direction:column;gap:2px}
+.menu-list button{display:flex;align-items:center;gap:10px;height:44px;padding:0 10px;border:0;border-radius:10px;background:transparent;text-align:left;width:100%}
+.menu-list button:hover{background:rgba(127,127,127,.12)}
+.menu-list button.danger{color:var(--rec)}
+.menu-list .on{color:var(--accent);font-weight:700}
+.menu-list em{margin-left:auto;font-style:normal;color:var(--muted);font-family:var(--f-mono);font-size:12px}
+.swatches{display:flex;gap:8px;flex-wrap:wrap}
+.swatches button{width:30px;height:30px;border-radius:50%;border:2px solid var(--glass-2);box-shadow:0 0 0 1px var(--line)}
+.swatches button.on{box-shadow:0 0 0 2px var(--accent)}
+#install{position:fixed;z-index:25;left:50%;transform:translateX(-50%);top:calc(64px + var(--st));width:min(440px,calc(100% - 24px));border-radius:18px;padding:14px 14px 14px 16px;display:flex;gap:12px;align-items:flex-start;box-sizing:border-box}
+#install b{display:block;font-family:var(--f-display);font-size:16px;margin-bottom:2px}
+#install p{margin:0;font-size:13px;color:var(--muted)}
+#install .share{display:inline-block;vertical-align:-3px;width:16px;height:16px}
+#toast{position:fixed;left:50%;bottom:calc(140px + var(--sb));transform:translateX(-50%);z-index:80;background:var(--ink);color:var(--stage);padding:10px 16px;border-radius:12px;font-size:13px;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .2s;max-width:calc(100% - 32px);text-align:center}
+#toast.show{opacity:1}
+@media (max-width:860px){.tool{min-width:54px;font-size:10px}.tab{min-width:96px}}
+@media (max-width:640px){
+  .tool span{display:none}.tool{min-width:42px;height:46px;padding:0 4px}.pill{height:54px}
+  .pill-btn span{display:none}.pill-btn{padding:0 12px}
+  #pop.at-l,#pop.at-c{left:calc(12px + var(--sl));right:calc(12px + var(--sr));width:auto;max-width:none;transform:none}
+  #lib{width:auto;right:calc(10px + var(--sr))}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div id="stage"><div class="spread" id="spread"></div></div>
+<div class="turn-flash l" id="flL"></div><div class="turn-flash r" id="flR"></div>
+<div id="atBar"></div>
+<div class="chrome top">
+  <button class="pill-btn glass" id="libBtn"><svg class="i" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg><span>목록</span></button>
+  <div class="tabs glass" id="tabs"></div>
+  <button class="round glass" id="autoBtn" title="자동 넘김" aria-label="자동 넘김"></button>
+  <button class="round glass" id="setBtn" title="보기 설정" aria-label="보기 설정"></button>
+</div>
+<div class="chrome bottom" id="bottom">
+  <div class="scrub" id="scrub"><div class="track"><div class="rail"></div><div class="fill" id="scFill"></div><div id="scDots"></div><div class="knob" id="scKnob"></div><input type="range" id="pgRange" min="1" max="1" value="1" aria-label="페이지 이동"></div><span class="lbl glass" id="pgLabel">1 / 1</span></div>
+  <div class="pills" id="pills">
+    <div class="l pill glass" id="toolsPill"></div>
+    <div class="c pill glass" id="midPill"></div>
+    <div class="r pill glass"><button class="tool" id="drawBtn"><svg class="i" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/></svg><span>필기모드</span></button></div>
+  </div>
+</div>
+<div id="drawbar" class="glass" hidden></div>
+<div id="pop" class="glass" hidden><header><h3 id="popTitle"></h3><button class="ib" id="popClose" aria-label="닫기"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header><div class="pbody" id="popBody"></div></div>
+<button id="perfExit" class="glass" hidden>연주 모드 끝내기</button>
+<div id="scrim" hidden></div>
+<aside id="lib" class="glass" hidden></aside>
+<div id="modal" hidden></div>
+<div id="install" class="glass" hidden><div style="flex:1"><b>아이패드에 앱으로 설치</b><p>Safari 주소창 오른쪽의 공유 버튼 <svg class="share" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 7l4-4 4 4M5 12v8h14v-8"/></svg> → <b style="display:inline;font-family:inherit;font-size:inherit">홈 화면에 추가</b>를 누르면 전체 화면 앱으로 열리고, 인터넷 없이도 써요.</p></div><button class="ib" id="installX" aria-label="닫기"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+<div id="toast" role="status"></div>
+<div class="countin" id="countin" hidden><b id="countinN"></b></div>
+<input type="file" id="fileIn" multiple accept="image/*,application/pdf,.pdf" hidden>
+<input type="file" id="pageIn" multiple accept="image/*,application/pdf,.pdf" hidden>
+<input type="file" id="audioIn" accept="audio/*" hidden>
+<input type="file" id="backupIn" accept=".json,application/json" hidden>
+
+<script>
+"use strict";
+const $=(s,el=document)=>el.querySelector(s);
+const $$=(s,el=document)=>[...el.querySelectorAll(s)];
+const uid=()=>Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-5);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const fmtTime=s=>{s=Math.max(0,Math.round(s||0));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
+const fmtDate=t=>{const d=new Date(t);return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`};
+const LS={get(k,d){try{const v=localStorage.getItem('bmd2.'+k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem('bmd2.'+k,JSON.stringify(v))}catch(e){}}};
+const debounce=(fn,ms)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms)}};
+const safeName=s=>s.replace(/[\\/:*?"<>|]/g,'_');
+const P={back:'M15 18l-6-6 6-6',plus:'M12 5v14M5 12h14',folder:'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+ list:'M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01',star:'M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z',
+ stack:'M4 7l8-4 8 4-8 4zM4 12l8 4 8-4M4 17l8 4 8-4',tag:'M3 12V4h8l10 10-8 8zM7.5 8.5h.01',search:'M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14zM20 20l-4-4',
+ more:'M5 12h.01M12 12h.01M19 12h.01',pen:'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',auto:'M6 4v16l12-8z',
+ metro:'M8 21h8M6.5 21L10 3h4l3.5 18M12 14l5-8',mic:'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3',
+ fork:'M9 3v7a3 3 0 0 0 6 0V3M12 13v8M9 21h6',keys:'M3 5h18v14H3zM8 5v8M12 5v8M16 5v8M8 13v6M12 13v6M16 13v6',music:'M9 18V5l12-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM21 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z',
+ marks:'M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01',crop:'M6 2v14a2 2 0 0 0 2 2h14M2 6h14a2 2 0 0 1 2 2v14',page:'M6 3h9l5 5v13H6zM14 3v6h6M12 12v5M9.5 14.5h5',perf:'M4 15c2-6 6-9 8-9s6 3 8 9M8 21h8M12 6V3',
+ gear:'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z',
+ x:'M6 6l12 12M18 6L6 18',info:'M12 11v6M12 7.5h.01M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z',undo:'M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3',redo:'M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3',
+ eraser:'M8 20h12M4.5 15.5l9-9a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L12 18H7z',hl:'M9 11l-5 5v4h4l5-5M9 11l6-6 4 4-6 6zM15 20h5',type:'M5 7V5h14v2M12 5v14M9 19h6',
+ trash:'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',rot:'M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7',left:'M15 18l-6-6 6-6',right:'M9 6l6 6-6 6',up:'M12 19V5M6 11l6-6 6 6',down:'M12 5v14M6 13l6 6 6-6',
+ dl:'M12 4v12M7 11l5 5 5-5M4 20h16',upload:'M12 16V4M7 9l5-5 5 5M4 20h16',play:'M7 4.5v15l12-7.5z',pause:'M8 5v14M16 5v14',check:'M5 12l5 5 9-10',
+ hand:'M7 11V5a1.5 1.5 0 0 1 3 0v5M10 10V3.5a1.5 1.5 0 0 1 3 0V10M13 10V5a1.5 1.5 0 0 1 3 0v6M16 9.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-2.7L4 14a1.5 1.5 0 0 1 2.4-1.8L7 13',
+ copy:'M8 8h12v12H8zM4 16V4h12',moon:'M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z',loop:'M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3'};
+const ic=(n,extra='')=>`<svg class="i" viewBox="0 0 24 24" ${extra}><path d="${P[n]}"/></svg>`;
+const icFill=n=>`<svg class="i" viewBox="0 0 24 24" style="fill:currentColor;stroke:none"><path d="${P[n]}"/></svg>`;
+let toastT;function toast(m,ms=2400){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),ms)}
+
+/* storage */
+const STORES=['scores','folders','setlists','blobs','ann','recs'];
+const DB={db:null,mem:Object.fromEntries(STORES.map(s=>[s,new Map()])),
+ async open(){try{if(!('indexedDB' in window))throw 0;this.db=await new Promise((res,rej)=>{const r=indexedDB.open('bomyeondae2',1);r.onupgradeneeded=()=>{const d=r.result;STORES.forEach(n=>{if(!d.objectStoreNames.contains(n))d.createObjectStore(n,{keyPath:'id'})})};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);setTimeout(()=>rej(new Error('timeout')),5000)})}catch(e){this.db=null}return !!this.db},
+ tx(store,mode,fn){return new Promise((res,rej)=>{const t=this.db.transaction(store,mode);const r=fn(t.objectStore(store));t.oncomplete=()=>res(r&&r.result);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error)})},
+ async all(s){if(!this.db)return[...this.mem[s].values()];return this.tx(s,'readonly',st=>st.getAll())},
+ async get(s,id){if(!this.db)return this.mem[s].get(id);return this.tx(s,'readonly',st=>st.get(id))},
+ async put(s,o){if(!this.db){this.mem[s].set(o.id,o);return}try{await this.tx(s,'readwrite',st=>st.put(o))}catch(e){toast('저장하지 못했어요. 기기 저장 공간을 확인해 주세요.');throw e}},
+ async del(s,id){if(!this.db){this.mem[s].delete(id);return}return this.tx(s,'readwrite',st=>st.delete(id))}};
+
+/* state */
+const COVERS=['#8e1d24','#2e8db3','#26282e','#d8c56b','#3d6b4c','#6a4a8c','#c0662d','#47587a'];
+const S={scores:[],folders:[],setlists:[]};
+const prefs=Object.assign({mode:'auto',night:false,tap:true,penOnly:false,theme:'system',toolsOpen:true,tabs:[],active:null,a4:440,tuning:'std',kbOct:4},LS.get('prefs',{}));
+const savePrefs=()=>LS.set('prefs',prefs);
+function applyTheme(){if(prefs.theme==='system')document.documentElement.removeAttribute('data-theme');else document.documentElement.setAttribute('data-theme',prefs.theme)}
+applyTheme();
+const scoreById=id=>S.scores.find(s=>s.id===id);
+const saveScore=sc=>DB.put('scores',sc);
+function newScore(o){return Object.assign({id:uid(),title:'제목 없음',composer:'',note:'',folderId:null,tags:[],fav:false,createdAt:Date.now(),lastOpened:0,pages:[],sections:[],
+ cover:{style:'color',color:COVERS[Math.floor(Math.random()*COVERS.length)]},auto:{mode:'bpm',sec:30,bpm:90,beats:4,bars:8,speed:30,countIn:true},metro:{bpm:90,beats:4},filter:{b:100,c:100},thumb:''},o)}
+
+/* rendering pages */
+const pdfCache=new Map(),bmpCache=new Map(),sizeCache=new Map();
+async function getBlob(id){const r=await DB.get('blobs',id);if(!r)throw new Error('파일을 찾을 수 없어요');return r.blob}
+function getPdf(b){if(!pdfCache.has(b)){pdfCache.set(b,(async()=>{if(!window.pdfjsLib)throw new Error('PDF 엔진을 불러오지 못했어요');if(window.PDF_WORKER&&!pdfjsLib.GlobalWorkerOptions.workerSrc)pdfjsLib.GlobalWorkerOptions.workerSrc=window.PDF_WORKER;const buf=await (await getBlob(b)).arrayBuffer();return pdfjsLib.getDocument({data:new Uint8Array(buf)}).promise})());pdfCache.get(b).catch(()=>pdfCache.delete(b))}return pdfCache.get(b)}
+function getBmp(b){if(bmpCache.has(b)){const p=bmpCache.get(b);bmpCache.delete(b);bmpCache.set(b,p);return p}
+ const p=(async()=>{const blob=await getBlob(b);if(window.createImageBitmap){try{return await createImageBitmap(blob)}catch(e){}}return await new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=()=>rej(new Error('이미지를 열 수 없어요'));im.src=URL.createObjectURL(blob)})})();
+ bmpCache.set(b,p);p.catch(()=>bmpCache.delete(b));while(bmpCache.size>24)bmpCache.delete(bmpCache.keys().next().value);return p}
+const srcKey=s=>s.k+':'+s.b+':'+(s.n||0);
+async function srcSize(s){const k=srcKey(s);if(sizeCache.has(k))return sizeCache.get(k);let r;
+ if(s.k==='img'){const b=await getBmp(s.b);r={w:b.width||b.naturalWidth,h:b.height||b.naturalHeight}}else{const pg=await (await getPdf(s.b)).getPage(s.n);const vp=pg.getViewport({scale:1});r={w:vp.width,h:vp.height}}
+ sizeCache.set(k,r);return r}
+async function aspect(e){const {w,h}=await srcSize(e.src);const [t,r,b,l]=e.crop;const cw=w*(1-l-r),ch=h*(1-t-b);return e.rot%180?ch/cw:cw/ch}
+const rBig=new Map(),rSmall=new Map();
+function renderPage(e,tw){tw=Math.round(clamp(tw,40,3200));const key=e.id+'|'+tw+'|'+e.rot+'|'+e.crop.join(',');const C=tw<300?rSmall:rBig;
+ if(C.has(key)){const p=C.get(key);C.delete(key);C.set(key,p);return p}
+ const p=(async()=>{const {w:sw,h:sh}=await srcSize(e.src);const [ct,cr,cb,cl]=e.crop;const cw0=sw*(1-cl-cr),ch0=sh*(1-ct-cb);const rotd=e.rot%180!==0;
+  const k=tw/(rotd?ch0:cw0);let src,s;
+  if(e.src.k==='img'){src=await getBmp(e.src.b);s=1}
+  else{const pg=await (await getPdf(e.src.b)).getPage(e.src.n);const vp=pg.getViewport({scale:k});const c=document.createElement('canvas');c.width=Math.ceil(vp.width);c.height=Math.ceil(vp.height);const cx=c.getContext('2d');cx.fillStyle='#fff';cx.fillRect(0,0,c.width,c.height);await pg.render({canvasContext:cx,viewport:vp}).promise;src=c;s=k}
+  const dw=cw0*k,dh=ch0*k;const out=document.createElement('canvas');out.width=Math.max(1,Math.round(rotd?dh:dw));out.height=Math.max(1,Math.round(rotd?dw:dh));
+  const x=out.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,out.width,out.height);x.imageSmoothingQuality='high';x.translate(out.width/2,out.height/2);x.rotate(e.rot*Math.PI/180);
+  x.drawImage(src,sw*cl*s,sh*ct*s,cw0*s,ch0*s,-dw/2,-dh/2,dw,dh);return out})();
+ C.set(key,p);p.catch(()=>C.delete(key));while(C.size>(C===rBig?10:80))C.delete(C.keys().next().value);return p}
+async function makeThumb(sc){if(!sc.pages.length){sc.thumb='';return}try{const c=await renderPage(sc.pages[0],280);const t=document.createElement('canvas');t.width=c.width;t.height=c.height;t.getContext('2d').drawImage(c,0,0);sc.thumb=t.toDataURL('image/jpeg',.8)}catch(e){sc.thumb=''}}
+const regenThumb=debounce(async()=>{const sc=V.score;if(!sc)return;await makeThumb(sc);saveScore(sc);if(L.open)renderLib()},700);
+
+/* import */
+const isPdf=f=>f.type==='application/pdf'||/\.pdf$/i.test(f.name);
+async function filesToPages(files){const pages=[];for(const f of files){const b=uid();await DB.put('blobs',{id:b,blob:f,type:f.type,name:f.name});
+  if(isPdf(f)){try{const doc=await getPdf(b);for(let n=1;n<=doc.numPages;n++)pages.push({id:uid(),src:{k:'pdf',b,n},rot:0,crop:[0,0,0,0]})}catch(e){toast(`${f.name}: PDF를 열 수 없어요`);await DB.del('blobs',b)}}
+  else if(f.type.startsWith('image/')||/\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name)){try{await getBmp(b);pages.push({id:uid(),src:{k:'img',b},rot:0,crop:[0,0,0,0]})}catch(e){toast(`${f.name}: 이미지를 열 수 없어요 (HEIC는 JPG로 바꿔 주세요)`);await DB.del('blobs',b)}}
+  else{toast(`${f.name}: 이미지나 PDF만 올릴 수 있어요`);await DB.del('blobs',b)}}
+ return pages}
+const baseName=n=>n.replace(/\.[^.]+$/,'').replace(/_+/g,' ').trim();
+const parseTags=s=>[...new Set((s||'').split(',').map(t=>t.trim()).filter(Boolean))];
+function folderSelect(id,val){return `<select class="tx" id="${id}"><option value="">폴더 없음</option>${S.folders.map(f=>`<option value="${f.id}" ${f.id===val?'selected':''}>${esc(f.name)}</option>`).join('')}</select>`}
+function startImport(files){files=[...files].filter(Boolean);if(!files.length)return;
+ const pdfs=files.filter(isPdf),imgs=files.filter(f=>!isPdf(f));const multi=imgs.length>1;const single=files.length===1||(pdfs.length===0&&imgs.length>0);
+ const defFolder=L.filter.kind==='folder'?L.filter.id:'';
+ dialog({title:'악보 올리기',body:`${single?`<label class="field"><span>제목</span><input class="tx" id="imTitle" value="${esc(baseName(files[0].name))}"></label><label class="field"><span>작곡가 · 가수</span><input class="tx" id="imComp" placeholder="예: 최유리"></label>`:`<p class="hint">PDF ${pdfs.length}개${imgs.length?`, 이미지 ${imgs.length}장`:''}을 올려요. 제목은 파일 이름으로 정하고 나중에 바꿀 수 있어요.</p>`}
+  <div class="row"><label class="field"><span>폴더</span>${folderSelect('imFolder',defFolder)}</label><label class="field"><span>태그 (쉼표로 구분)</span><input class="tx" id="imTags" placeholder="예: 기타, 레슨"></label></div>
+  ${multi?`<label class="check"><input type="checkbox" id="imMerge" checked> 이미지 ${imgs.length}장을 한 악보로 합치기 (파일 이름 순)</label>`:''}`,
+ buttons:[{label:'취소'},{label:'올리기',kind:'primary',onClick:async()=>{
+  const title=$('#imTitle')?.value.trim(),comp=$('#imComp')?.value.trim()||'',folderId=$('#imFolder').value||null,merge=$('#imMerge')?$('#imMerge').checked:true,tags=parseTags($('#imTags').value);
+  closeDialog();toast('악보를 준비하는 중…',8000);const made=[];const groups=[];pdfs.forEach(f=>groups.push([f]));
+  if(imgs.length){const sorted=imgs.slice().sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));if(merge)groups.push(sorted);else sorted.forEach(f=>groups.push([f]))}
+  for(const g of groups){const pages=await filesToPages(g);if(!pages.length)continue;const sc=newScore({title:(single&&title)||baseName(g[0].name),composer:comp,folderId,tags,pages});await makeThumb(sc);await saveScore(sc);S.scores.push(sc);made.push(sc)}
+  if(made.length){toast(made.length===1?`"${made[0].title}"을(를) 넣었어요`:`악보 ${made.length}개를 넣었어요`);if(made.length===1){closeLib();openScore(made[0].id)}else renderLib()}
+  return false}}]})}
+
+/* dialogs */
+function dialog({title,body,buttons=[]}){const m=$('#modal');m.innerHTML=`<div class="dlg" role="dialog" aria-modal="true"><h3>${esc(title)}</h3><div class="dlg-body">${body||''}</div><div class="dlg-actions"></div></div>`;
+ const act=$('.dlg-actions',m);if(!buttons.length)act.remove();buttons.forEach(b=>{const el=document.createElement('button');el.className='btn '+(b.kind||'');el.textContent=b.label;el.onclick=async()=>{if(b.onClick){const r=await b.onClick();if(r===false)return}closeDialog()};act.append(el)});
+ m.hidden=false;m.onclick=e=>{if(e.target===m)closeDialog()};return m}
+function closeDialog(){$('#modal').hidden=true;$('#modal').innerHTML=''}
+function menu(title,items){const m=dialog({title,body:`<div class="menu-list">${items.map((it,i)=>`<button data-i="${i}" class="${it.danger?'danger':''} ${it.on?'on':''}">${it.icon?ic(it.icon):''}${esc(it.label)}</button>`).join('')}</div>`,buttons:[{label:'닫기'}]});
+ $$('.menu-list button',m).forEach(b=>b.onclick=()=>{const it=items[+b.dataset.i];closeDialog();it.run&&it.run()})}
+function confirmDlg(title,msg,label,run){dialog({title,body:`<p style="margin:0">${esc(msg)}</p>`,buttons:[{label:'취소'},{label,kind:'danger',onClick:run}]})}
+function promptDlg(title,label,val,run){dialog({title,body:`<label class="field"><span>${esc(label)}</span><input class="tx" id="pdIn" value="${esc(val||'')}"></label>`,buttons:[{label:'취소'},{label:'확인',kind:'primary',onClick:()=>{const v=$('#pdIn').value.trim();if(!v){toast('이름을 입력해 주세요');return false}run(v)}}]});
+ const i=$('#pdIn');i.focus();i.onkeydown=e=>{if(e.key==='Enter')$('.dlg-actions .primary').click()}}
+
+/* library panel */
+const L={open:false,tab:'all',filter:{kind:'all',id:null},q:'',searching:false,selecting:false,picked:new Set(),set:null,sort:LS.get('sort','recent')};
+function openLib(){L.open=true;$('#lib').hidden=false;$('#scrim').hidden=false;closePop();renderLib()}
+function closeLib(){L.open=false;L.selecting=false;L.picked.clear();$('#lib').hidden=true;$('#scrim').hidden=true;freeUrls('lib')}
+$('#libBtn').onclick=()=>L.open?closeLib():openLib();$('#scrim').onclick=closeLib;
+const clefSVG=`<svg class="clef" viewBox="0 0 40 70" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><path d="M22 66c-8 2-12-4-6-8 5-3 9 2 4 6M22 66c4-18-2-48 2-58 3-6 9-2 7 6-2 8-16 14-18 24-2 10 8 14 15 10 8-5 4-16-4-14-6 2-6 10 0 11"/></svg>`;
+function coverHTML(s){const c=s.cover||{style:'color',color:COVERS[0]};
+ return c.style==='page'&&s.thumb?`<div class="book page" style="--c:#fff"><img src="${s.thumb}" alt=""></div>`:`<div class="book" style="--c:${c.color}"><i class="spine"></i><div class="label">${esc(s.title)}${s.composer?`<span>${esc(s.composer)}</span>`:''}</div>${clefSVG}</div>`}
+function bookHTML(s,sel){return `<div class="bk ${L.picked.has(s.id)?'picked':''}"><div class="ttl">${esc(s.title)}</div><div class="cover-wrap"><button class="cv" data-open="${s.id}" aria-label="${esc(s.title)} 열기">${coverHTML(s)}</button>
+  ${s.fav?`<span class="favm">${ic('star')}</span>`:''}${sel?`<span class="sel">${L.picked.has(s.id)?ic('check'):''}</span>`:`<button class="inf" data-info="${s.id}" aria-label="${esc(s.title)} 정보">i</button>`}</div></div>`}
+function filterLabel(){const f=L.filter;if(f.kind==='fav')return '즐겨찾기';if(f.kind==='folder')return (S.folders.find(x=>x.id===f.id)||{}).name||'폴더';if(f.kind==='tag')return '#'+f.id;return '태그 · 폴더'}
+function filtered(){const f=L.filter;let list=S.scores.slice();if(f.kind==='fav')list=list.filter(s=>s.fav);else if(f.kind==='folder')list=list.filter(s=>s.folderId===f.id);else if(f.kind==='tag')list=list.filter(s=>(s.tags||[]).includes(f.id));
+ const q=L.q.trim().toLowerCase();if(q)list=list.filter(s=>(s.title+' '+s.composer+' '+(s.tags||[]).join(' ')+' '+(s.note||'')).toLowerCase().includes(q));
+ list.sort(L.sort==='title'?(a,b)=>a.title.localeCompare(b.title,'ko'):L.sort==='added'?(a,b)=>b.createdAt-a.createdAt:(a,b)=>(b.lastOpened||b.createdAt)-(a.lastOpened||a.createdAt));return list}
+function renderLib(){if(!L.open)return;const el=$('#lib');
+ const head=`<div class="lib-head"><button class="ib" id="lbSet" aria-label="서재 설정">${ic('gear')}</button><div class="seg"><button data-lt="all" class="${L.tab==='all'?'on':''}">모든 악보</button><button data-lt="sets" class="${L.tab==='sets'?'on':''}">곡목록</button><button data-lt="recs" class="${L.tab==='recs'?'on':''}">녹음</button></div><button class="ib" id="lbClose" aria-label="닫기">${ic('x')}</button></div>`;
+ let body='';
+ if(L.tab==='all'){const list=filtered();const plain=L.filter.kind==='all'&&!L.q;const recent=S.scores.filter(s=>s.lastOpened).sort((a,b)=>b.lastOpened-a.lastOpened).slice(0,10);
+  body=`<div class="lib-bar"><button class="filter" id="lbFilter">${ic('tag')}<span>${esc(filterLabel())}</span></button><span class="grow"></span><button class="ib" id="lbSearch" aria-label="검색">${ic('search')}</button><button class="txt ${L.selecting?'on':''}" id="lbSel">${L.selecting?'완료':'선택'}</button><button class="ib" id="lbMore" aria-label="더보기">${ic('more','style="stroke-width:3"')}</button></div>
+  ${L.searching?`<label class="lib-search">${ic('search')}<input id="lbQ" type="search" placeholder="제목, 가수, 태그 검색" value="${esc(L.q)}"></label>`:''}
+  <div class="lib-body">
+  ${plain&&recent.length&&!L.selecting?`<div class="lib-sec"><h4>최근의 (${recent.length})</h4></div><div class="shelf">${recent.map(s=>bookHTML(s)).join('')}</div>`:''}
+  <div class="lib-sec"><h4>${plain?'전체':esc(filterLabel())} (${list.length})</h4><span class="grow"></span><select class="tx" id="lbSort" style="width:auto;height:30px;font-size:12px" aria-label="정렬"><option value="recent" ${L.sort==='recent'?'selected':''}>최근 연 순</option><option value="added" ${L.sort==='added'?'selected':''}>추가한 순</option><option value="title" ${L.sort==='title'?'selected':''}>제목순</option></select></div>
+  <div class="shelf">${!L.selecting?`<div class="bk add-tile"><div class="ttl">악보 추가</div><button class="cv" id="lbAdd" aria-label="악보 추가"><div class="book">${ic('plus')}</div></button></div>`:''}${list.map(s=>bookHTML(s,L.selecting)).join('')}
+  ${!list.length&&!plain?`<div class="empty"><b>찾는 악보가 없어요</b>다른 단어나 태그로 찾아보세요.</div>`:''}</div>
+  ${plain&&S.scores.some(s=>s.sample)?`<p class="hint" style="margin-top:18px">예시 악보는 둘러보기용이에요. 정보(i)에서 지울 수 있어요. 이미지나 PDF를 화면에 끌어다 놓아도 올라가요.</p>`:''}</div>
+  ${L.selecting?`<div class="selbar"><button class="btn sm" id="sbFolder" ${L.picked.size?'':'disabled'}>${ic('folder')}폴더</button><button class="btn sm" id="sbTag" ${L.picked.size?'':'disabled'}>${ic('tag')}태그</button><button class="btn sm" id="sbSet" ${L.picked.size?'':'disabled'}>${ic('list')}곡목록</button><button class="btn sm danger" id="sbDel" ${L.picked.size?'':'disabled'}>${ic('trash')}삭제</button></div>`:''}`}
+ else if(L.tab==='sets')body=setsHTML();
+ else body=`<div class="lib-body" id="recsBody"><p class="hint" style="margin-top:8px">불러오는 중…</p></div>`;
+ el.innerHTML=head+body;bindLib(el)}
+function bindLib(el){$('#lbClose').onclick=closeLib;$$('[data-lt]',el).forEach(b=>b.onclick=()=>{L.tab=b.dataset.lt;L.set=null;L.selecting=false;L.picked.clear();renderLib()});
+ $('#lbSet').onclick=libSettings;
+ $$('[data-open]',el).forEach(b=>b.onclick=()=>{const id=b.dataset.open;if(L.selecting){L.picked.has(id)?L.picked.delete(id):L.picked.add(id);renderLib();return}closeLib();openScore(id)});
+ $$('[data-info]',el).forEach(b=>b.onclick=()=>infoDialog(scoreById(b.dataset.info)));
+ if(L.tab==='all'){$('#lbFilter').onclick=filterMenu;$('#lbSearch').onclick=()=>{L.searching=!L.searching;if(!L.searching)L.q='';renderLib();$('#lbQ')&&$('#lbQ').focus()};
+  $('#lbQ')&&($('#lbQ').oninput=e=>{L.q=e.target.value;const pos=e.target.selectionStart;renderLib();const q=$('#lbQ');q.focus();q.setSelectionRange(pos,pos)});
+  $('#lbSel').onclick=()=>{L.selecting=!L.selecting;L.picked.clear();renderLib()};$('#lbMore').onclick=libSettings;
+  $('#lbSort').onchange=e=>{L.sort=e.target.value;LS.set('sort',L.sort);renderLib()};$('#lbAdd')&&($('#lbAdd').onclick=()=>$('#fileIn').click());
+  if(L.selecting){const ids=()=>[...L.picked].map(scoreById).filter(Boolean);
+   $('#sbFolder').onclick=()=>menu('폴더로 옮기기',[{label:'폴더 없음',icon:'folder',run:()=>bulk(s=>s.folderId=null)},...S.folders.map(f=>({label:f.name,icon:'folder',run:()=>bulk(s=>s.folderId=f.id)})),{label:'새 폴더 만들기',icon:'plus',run:()=>addFolder(f=>bulk(s=>s.folderId=f.id))}]);
+   $('#sbTag').onclick=()=>promptDlg('태그 붙이기','붙일 태그 (쉼표로 구분)','',v=>bulk(s=>s.tags=[...new Set([...(s.tags||[]),...parseTags(v)])]));
+   $('#sbSet').onclick=()=>pickSet(sl=>{ids().forEach(s=>{if(!sl.items.includes(s.id))sl.items.push(s.id)});DB.put('setlists',sl);toast(`"${sl.name}"에 ${L.picked.size}곡을 넣었어요`);L.selecting=false;L.picked.clear();renderLib()});
+   $('#sbDel').onclick=()=>confirmDlg('악보 삭제',`${L.picked.size}개 악보와 필기, 녹음을 모두 지울까요? 되돌릴 수 없어요.`,'삭제',async()=>{for(const s of ids())await deleteScore(s,true);L.selecting=false;L.picked.clear();renderLib();toast('지웠어요')})}}
+ if(L.tab==='sets')bindSets(el);if(L.tab==='recs')renderRecsTab()}
+async function bulk(fn){for(const id of L.picked){const s=scoreById(id);if(s){fn(s);await saveScore(s)}}L.selecting=false;L.picked.clear();renderLib();renderTabs();toast('바꿨어요')}
+function filterMenu(){const tags=[...new Set(S.scores.flatMap(s=>s.tags||[]))].sort((a,b)=>a.localeCompare(b,'ko'));const f=L.filter;
+ const m=dialog({title:'태그 · 폴더',body:`<div class="menu-list"><button data-k="all" class="${f.kind==='all'?'on':''}">${ic('stack')}모든 악보<em>${S.scores.length}</em></button><button data-k="fav" class="${f.kind==='fav'?'on':''}">${ic('star')}즐겨찾기<em>${S.scores.filter(s=>s.fav).length}</em></button></div>
+  <span class="lbl">폴더</span><div class="menu-list">${S.folders.map(x=>`<div class="row" style="gap:0;flex-wrap:nowrap"><button data-k="folder" data-id="${x.id}" class="${f.kind==='folder'&&f.id===x.id?'on':''}">${ic('folder')}${esc(x.name)}<em>${S.scores.filter(s=>s.folderId===x.id).length}</em></button><button class="ib" data-fm="${x.id}" aria-label="폴더 메뉴">${ic('more','style="stroke-width:3"')}</button></div>`).join('')}<button data-newf>${ic('plus')}새 폴더</button></div>
+  <span class="lbl">태그</span>${tags.length?`<div class="chips">${tags.map(t=>`<button class="chip ${f.kind==='tag'&&f.id===t?'on':''}" data-k="tag" data-id="${esc(t)}">#${esc(t)}</button>`).join('')}</div>`:'<p class="hint">악보 정보(i)에서 태그를 붙이면 여기서 모아 볼 수 있어요.</p>'}`,buttons:[{label:'닫기'}]});
+ $$('[data-k]',m).forEach(b=>b.onclick=()=>{closeDialog();L.filter={kind:b.dataset.k,id:b.dataset.id||null};renderLib()});
+ $('[data-newf]',m).onclick=()=>{closeDialog();addFolder(fd=>{L.filter={kind:'folder',id:fd.id};renderLib()})};
+ $$('[data-fm]',m).forEach(b=>b.onclick=()=>{closeDialog();folderMenu(b.dataset.fm)})}
+function addFolder(cb){promptDlg('새 폴더','폴더 이름','',async v=>{const fd={id:uid(),name:v,createdAt:Date.now()};S.folders.push(fd);await DB.put('folders',fd);renderLib();cb&&cb(fd)})}
+function folderMenu(id){const fd=S.folders.find(f=>f.id===id);if(!fd)return;menu(fd.name,[
+ {label:'이름 바꾸기',icon:'type',run:()=>promptDlg('폴더 이름 바꾸기','폴더 이름',fd.name,async v=>{fd.name=v;await DB.put('folders',fd);renderLib()})},
+ {label:'폴더 삭제 (악보는 남아요)',icon:'trash',danger:true,run:()=>confirmDlg('폴더 삭제',`"${fd.name}" 폴더를 지울까요? 안에 있던 악보는 그대로 남아요.`,'삭제',async()=>{S.folders=S.folders.filter(f=>f!==fd);await DB.del('folders',id);for(const s of S.scores)if(s.folderId===id){s.folderId=null;await saveScore(s)}if(L.filter.id===id)L.filter={kind:'all',id:null};renderLib()})}])}
+function libSettings(){menu('서재',[{label:'악보 올리기',icon:'upload',run:()=>$('#fileIn').click()},{label:'새 폴더',icon:'folder',run:()=>addFolder()},{label:'새 곡목록',icon:'list',run:()=>addSet()},{label:'백업 파일로 저장',icon:'dl',run:exportBackup},{label:'백업 불러오기',icon:'upload',run:()=>$('#backupIn').click()},
+ {label:`앱 테마: ${({system:'시스템',light:'밝게',dark:'어둡게'})[prefs.theme]}`,icon:'moon',run:()=>{prefs.theme={system:'light',light:'dark',dark:'system'}[prefs.theme];savePrefs();applyTheme();toast('테마를 바꿨어요')}}])}
+function infoDialog(s){if(!s)return;const c=s.cover||(s.cover={style:'color',color:COVERS[0]});let col=c.color,sty=c.style;
+ const m=dialog({title:'악보 정보',body:`<label class="field"><span>제목</span><input class="tx" id="inT" value="${esc(s.title)}"></label><label class="field"><span>작곡가 · 가수</span><input class="tx" id="inC" value="${esc(s.composer)}"></label>
+  <div class="row"><label class="field"><span>폴더</span>${folderSelect('inF',s.folderId)}</label><label class="field"><span>태그 (쉼표)</span><input class="tx" id="inG" value="${esc((s.tags||[]).join(', '))}"></label></div>
+  <label class="field"><span>메모 (조성, 튜닝, 카포 등)</span><textarea class="tx" id="inN">${esc(s.note||'')}</textarea></label>
+  <div class="grp"><span class="lbl">표지</span><div class="seg" id="inSty"><button data-s="color" class="${sty==='color'?'on':''}">색 표지</button><button data-s="page" class="${sty==='page'?'on':''}">첫 페이지</button></div><div class="swatches">${COVERS.map(x=>`<button data-col="${x}" style="background:${x}" class="${x===col?'on':''}" aria-label="표지 색"></button>`).join('')}</div></div>
+  <div class="row"><button class="btn sm" id="inFav">${ic('star')}${s.fav?'즐겨찾기 해제':'즐겨찾기'}</button><button class="btn sm" id="inSet">${ic('list')}곡목록에 추가</button><button class="btn sm danger" id="inDel">${ic('trash')}삭제</button></div>
+  <p class="hint">${s.pages.length}쪽 · ${new Date(s.createdAt).toLocaleDateString('ko-KR')} 추가</p>`,
+ buttons:[{label:'취소'},{label:'저장',kind:'primary',onClick:async()=>{s.title=$('#inT').value.trim()||'제목 없음';s.composer=$('#inC').value.trim();s.folderId=$('#inF').value||null;s.tags=parseTags($('#inG').value);s.note=$('#inN').value;s.cover={style:sty,color:col};await saveScore(s);renderLib();renderTabs();updateNav()}}]});
+ $$('[data-col]',m).forEach(b=>b.onclick=()=>{col=b.dataset.col;$$('[data-col]',m).forEach(x=>x.classList.toggle('on',x===b))});
+ $$('#inSty button',m).forEach(b=>b.onclick=()=>{sty=b.dataset.s;$$('#inSty button',m).forEach(x=>x.classList.toggle('on',x===b))});
+ $('#inFav').onclick=async()=>{s.fav=!s.fav;await saveScore(s);closeDialog();renderLib();toast(s.fav?'즐겨찾기에 넣었어요':'즐겨찾기에서 뺐어요')};
+ $('#inSet').onclick=()=>{closeDialog();pickSet(sl=>{if(!sl.items.includes(s.id))sl.items.push(s.id);DB.put('setlists',sl);renderLib();toast(`"${sl.name}"에 넣었어요`)})};
+ $('#inDel').onclick=()=>{closeDialog();confirmDlg('악보 삭제',`"${s.title}"과(와) 필기, 녹음까지 모두 지울까요? 되돌릴 수 없어요.`,'삭제',()=>deleteScore(s))}}
+function pickSet(cb){menu('곡목록 고르기',[...S.setlists.map(sl=>({label:`${sl.name} (${sl.items.length}곡)`,icon:'list',run:()=>cb(sl)})),{label:'새 곡목록 만들기',icon:'plus',run:()=>addSet(cb)}])}
+function addSet(cb){promptDlg('새 곡목록','이름 (예: 11월 공연 셋리스트)','',async v=>{const sl={id:uid(),name:v,items:[],createdAt:Date.now()};S.setlists.push(sl);await DB.put('setlists',sl);if(!cb){L.tab='sets';L.set=sl.id}renderLib();cb&&cb(sl)})}
+async function deleteScore(s,quiet){S.scores=S.scores.filter(x=>x!==s);await DB.del('scores',s.id);await DB.del('ann',s.id);
+ const used=new Set(S.scores.flatMap(x=>x.pages.map(p=>p.src.b)));for(const b of new Set(s.pages.map(p=>p.src.b)))if(!used.has(b))await DB.del('blobs',b);
+ for(const r of await DB.all('recs'))if(r.scoreId===s.id)await DB.del('recs',r.id);
+ for(const sl of S.setlists)if(sl.items.includes(s.id)){sl.items=sl.items.filter(i=>i!==s.id);await DB.put('setlists',sl)}
+ if(prefs.tabs.includes(s.id))closeTab(s.id);if(!quiet){renderLib();toast('악보를 지웠어요')}}
+function setsHTML(){if(L.set){const sl=S.setlists.find(x=>x.id===L.set);if(sl){const items=sl.items.map(scoreById).filter(Boolean);sl.items=items.map(s=>s.id);
+  return `<div class="lib-bar"><button class="filter" id="slBack">${ic('back')}<span>곡목록</span></button><span class="grow"></span><button class="ib" id="slMore" aria-label="곡목록 메뉴">${ic('more','style="stroke-width:3"')}</button></div>
+  <div class="lib-body"><div class="lib-sec"><h4 style="color:var(--ink);font-family:var(--f-display);font-size:20px">${esc(sl.name)}</h4><span class="grow"></span><span class="hint">${items.length}곡</span></div>
+  <div class="row" style="margin-bottom:12px"><button class="btn primary wide" id="slPlay" ${items.length?'':'disabled'}>${icFill('play')}처음부터 연주</button><select class="tx" id="slAdd" style="flex:1" aria-label="곡 추가"><option value="">+ 곡 추가</option>${S.scores.filter(s=>!sl.items.includes(s.id)).map(s=>`<option value="${s.id}">${esc(s.title)}</option>`).join('')}</select></div>
+  <div class="lst">${items.length?items.map((s,i)=>`<div class="set-row"><span class="n">${i+1}</span><div class="mini">${coverHTML(s)}</div><div class="t"><b>${esc(s.title)}</b><span>${esc([s.composer,s.pages.length+'쪽'].filter(Boolean).join(' · '))}</span></div>
+   <button class="ib" data-sp="${i}" aria-label="여기서 연주">${icFill('play')}</button><button class="ib" data-su="${i}" aria-label="위로" ${i?'':'disabled'}>${ic('up')}</button><button class="ib" data-sd="${i}" aria-label="아래로" ${i<items.length-1?'':'disabled'}>${ic('down')}</button><button class="ib" data-sx="${i}" aria-label="빼기">${ic('x')}</button></div>`).join(''):`<div class="empty"><b>곡목록이 비어 있어요</b>'곡 추가'에서 연주 순서대로 넣으세요.</div>`}</div>
+  <p class="hint" style="margin-top:12px">곡목록으로 열면 마지막 페이지에서 다음 곡으로 바로 넘어가요.</p></div>`}L.set=null}
+ return `<div class="lib-bar"><span class="lbl" style="padding-left:8px">곡목록 ${S.setlists.length}개</span><span class="grow"></span><button class="btn sm" id="slNew">${ic('plus')}새 곡목록</button></div><div class="lib-body"><div class="lst">${S.setlists.length?S.setlists.map(sl=>`<div class="li"><button class="g" data-slo="${sl.id}"><b>${esc(sl.name)}</b><span>${sl.items.length}곡 · ${esc(sl.items.slice(0,3).map(id=>(scoreById(id)||{}).title).filter(Boolean).join(', '))}</span></button><button class="ib" data-slp="${sl.id}" aria-label="연주" ${sl.items.length?'':'disabled'}>${icFill('play')}</button></div>`).join(''):`<div class="empty"><b>곡목록이 없어요</b>공연이나 레슨에서 연주할 순서대로 악보를 묶어 두세요.</div>`}</div></div>`}
+function bindSets(el){$('#slNew')&&($('#slNew').onclick=()=>addSet(sl=>{L.set=sl.id;renderLib()}));
+ $$('[data-slo]',el).forEach(b=>b.onclick=()=>{L.set=b.dataset.slo;renderLib()});
+ $$('[data-slp]',el).forEach(b=>b.onclick=()=>{const sl=S.setlists.find(x=>x.id===b.dataset.slp);closeLib();openScore(sl.items[0],{set:sl.id,setIdx:0})});
+ const sl=L.set&&S.setlists.find(x=>x.id===L.set);if(!sl)return;const save=()=>{DB.put('setlists',sl);renderLib()};
+ $('#slBack').onclick=()=>{L.set=null;renderLib()};
+ $('#slMore').onclick=()=>menu(sl.name,[{label:'이름 바꾸기',icon:'type',run:()=>promptDlg('곡목록 이름','이름',sl.name,v=>{sl.name=v;save()})},{label:'곡목록 삭제',icon:'trash',danger:true,run:()=>confirmDlg('곡목록 삭제',`"${sl.name}"을(를) 지울까요? 악보는 지워지지 않아요.`,'삭제',async()=>{S.setlists=S.setlists.filter(x=>x!==sl);await DB.del('setlists',sl.id);L.set=null;renderLib()})}]);
+ $('#slPlay').onclick=()=>{closeLib();openScore(sl.items[0],{set:sl.id,setIdx:0})};$('#slAdd').onchange=e=>{if(e.target.value){sl.items.push(e.target.value);save()}};
+ $$('[data-sp]',el).forEach(b=>b.onclick=()=>{closeLib();openScore(sl.items[+b.dataset.sp],{set:sl.id,setIdx:+b.dataset.sp})});
+ $$('[data-su]',el).forEach(b=>b.onclick=()=>{const i=+b.dataset.su;[sl.items[i-1],sl.items[i]]=[sl.items[i],sl.items[i-1]];save()});
+ $$('[data-sd]',el).forEach(b=>b.onclick=()=>{const i=+b.dataset.sd;[sl.items[i+1],sl.items[i]]=[sl.items[i],sl.items[i+1]];save()});
+ $$('[data-sx]',el).forEach(b=>b.onclick=()=>{sl.items.splice(+b.dataset.sx,1);save()})}
+const urlBag={lib:[],pop:[]};function freeUrls(k){urlBag[k].forEach(u=>URL.revokeObjectURL(u));urlBag[k]=[]}
+async function renderRecsTab(){freeUrls('lib');const recs=(await DB.all('recs')).sort((a,b)=>b.at-a.at);const box=$('#recsBody');if(!box)return;
+ if(!recs.length){box.innerHTML=`<div class="empty" style="margin-top:12px"><b>녹음이 없어요</b>악보를 연 뒤 '음악 도구 → 녹음기'로 연습을 녹음하거나, '음악'에서 반주 음원을 불러오세요.</div>`;return}
+ const by={};recs.forEach(r=>(by[r.scoreId]=by[r.scoreId]||[]).push(r));
+ box.innerHTML=Object.entries(by).map(([sid,rs])=>{const s=scoreById(sid);return `<div class="lib-sec"><h4>${esc(s?s.title:'지운 악보')}</h4><span class="grow"></span>${s?`<button class="btn sm" data-opn="${sid}">악보 열기</button>`:''}</div><div class="lst">${rs.map(r=>{const u=URL.createObjectURL(r.blob);urlBag.lib.push(u);return recItem(r,u)}).join('')}</div>`}).join('');
+ $$('[data-opn]',box).forEach(b=>b.onclick=()=>{closeLib();openScore(b.dataset.opn)});bindRecItems(box,recs,renderRecsTab)}
+function recItem(r,u){return `<div class="li" style="flex-wrap:wrap"><div class="g"><b>${esc(r.name)}</b><span>${r.kind==='ref'?'불러온 음원':fmtDate(r.at)+' · '+fmtTime(r.dur)}</span></div>${r.kind==='rec'?`<button class="ib" data-rdl="${r.id}" aria-label="파일로 저장">${ic('dl')}</button>`:''}<button class="ib" data-rren="${r.id}" aria-label="이름 바꾸기">${ic('type')}</button><button class="ib" data-rdel="${r.id}" aria-label="삭제">${ic('trash')}</button><audio controls preload="metadata" src="${u}"></audio></div>`}
+function bindRecItems(root,recs,refresh){$$('[data-rdl]',root).forEach(x=>x.onclick=()=>{const r=recs.find(q=>q.id===x.dataset.rdl);saveFile(safeName(r.name)+'.'+(r.ext||'webm'),r.blob)});
+ $$('[data-rdel]',root).forEach(x=>x.onclick=()=>confirmDlg('녹음 삭제','이 녹음을 지울까요?','삭제',async()=>{await DB.del('recs',x.dataset.rdel);refresh()}));
+ $$('[data-rren]',root).forEach(x=>x.onclick=()=>{const r=recs.find(q=>q.id===x.dataset.rren);promptDlg('이름 바꾸기','이름',r.name,async v=>{r.name=v;await DB.put('recs',r);refresh()})})}
+
+/* viewer */
+const V={score:null,idx:0,ann:{},set:null,setIdx:0,hist:[],redo:[],pop:null,draw:false,zoom:1,tok:0,sheets:[]};
+const T={tool:'pen',color:'#d12f2f',size:3,stamp:'♯',custom:''};
+const stage=$('#stage'),spread=$('#spread');
+const mode=()=>prefs.mode==='auto'?(innerWidth>innerHeight&&innerWidth>=760?'double':'single'):prefs.mode;
+const step=()=>mode()==='double'?2:1;
+function renderTabs(){const el=$('#tabs');const tabs=prefs.tabs.map(scoreById).filter(Boolean);prefs.tabs=tabs.map(s=>s.id);
+ if(!tabs.length){el.innerHTML=`<span class="tab-empty">열린 악보가 없어요 · '목록'에서 골라 주세요</span>`;return}
+ el.innerHTML=tabs.map(s=>`<button class="tab ${V.score&&V.score.id===s.id?'on':''}" data-tab="${s.id}" title="${esc(s.title)}"><span class="inf" data-tinf role="button" aria-label="악보 정보">${ic('info')}</span><i class="sw" style="background:${(s.cover||{}).color||COVERS[0]}"></i><span class="nm">${esc(s.title)}</span><span class="x" data-tx role="button" aria-label="탭 닫기">${ic('x')}</span></button>`).join('');
+ $$('[data-tab]',el).forEach(b=>b.onclick=e=>{const id=b.dataset.tab;if(e.target.closest('[data-tx]')){closeTab(id);return}if(e.target.closest('[data-tinf]')){infoDialog(scoreById(id));return}if(!V.score||V.score.id!==id)openScore(id)});
+ const on=$('.tab.on',el);on&&on.scrollIntoView({block:'nearest',inline:'nearest'})}
+function closeTab(id){const i=prefs.tabs.indexOf(id);if(i<0)return;prefs.tabs.splice(i,1);savePrefs();
+ if(V.score&&V.score.id===id){const nid=prefs.tabs[Math.min(i,prefs.tabs.length-1)];if(nid)openScore(nid);else{atStop();V.score=null;prefs.active=null;savePrefs();closePop();setDraw(false);layout();renderTabs();updateNav()}}else renderTabs()}
+async function openScore(id,opt={}){const sc=scoreById(id);if(!sc)return;
+ if(V.score&&V.score!==sc&&!opt.keepAuto)atStop();
+ if(!prefs.tabs.includes(id)){const i=V.score?prefs.tabs.indexOf(V.score.id):-1;if(opt.set&&V.set===opt.set&&i>=0)prefs.tabs[i]=id;else prefs.tabs.push(id);if(prefs.tabs.length>8)prefs.tabs.shift()}
+ prefs.active=id;savePrefs();
+ V.score=sc;V.set=opt.set||null;V.setIdx=opt.setIdx||0;V.idx=opt.page==='last'?Math.max(0,sc.pages.length-step()):0;V.hist=[];V.redo=[];V.zoom=1;
+ const a=await DB.get('ann',sc.id);V.ann=a?a.pages:{};sc.lastOpened=Date.now();saveScore(sc);
+ if(V.draw)setDraw(false);if(V.pop&&!['keys','tuner','metro','settings'].includes(V.pop))closePop();else if(V.pop)renderPop();
+ renderTabs();await layout();updateNav();wake(true)}
+function sheetFilter(){const f=(V.score&&V.score.filter)||{b:100,c:100};return `${prefs.night?'invert(1) hue-rotate(180deg) ':''}brightness(${f.b}%) contrast(${f.c}%)`}
+let io=null;const dpr=()=>Math.min(window.devicePixelRatio||1,2.5);
+async function layout(){const sc=V.score;const tok=++V.tok;spread.innerHTML='';V.sheets=[];io&&io.disconnect();const m=mode();
+ stage.classList.toggle('scroll',m==='scroll'&&!!sc);spread.classList.remove('two');
+ if(!sc){spread.innerHTML=`<div class="blank"><div><b>보면대</b>악보를 고르면 여기에 펼쳐져요.</div><div class="row" style="justify-content:center"><button class="btn primary" id="bkLib">${ic('stack')}목록 열기</button><button class="btn" id="bkUp">${ic('upload')}악보 올리기</button></div></div>`;$('#bkLib').onclick=openLib;$('#bkUp').onclick=()=>$('#fileIn').click();return}
+ if(!sc.pages.length){spread.innerHTML=`<div class="blank"><div><b>페이지가 없어요</b>아래 '페이지'에서 이미지나 PDF를 추가하세요.</div></div>`;return}
+ V.idx=clamp(V.idx,0,sc.pages.length-1);const W=innerWidth-16,H=innerHeight-16;
+ if(m==='scroll'){const w=Math.min(W,1100)*V.zoom;const as=await Promise.all(sc.pages.map(p=>aspect(p).catch(()=>.707)));if(tok!==V.tok)return;
+  sc.pages.forEach((p,i)=>spread.append(makeSheet(p,i,w,w/as[i]).el));
+  io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){const s=V.sheets.find(x=>x.el===e.target);s&&paintSheet(s,tok)}}),{root:stage,rootMargin:'120% 0px'});V.sheets.forEach(s=>io.observe(s.el));
+  const t=V.sheets[V.idx];stage.scrollTop=t?t.el.offsetTop-70:0}
+ else{const idxs=[V.idx];if(m==='double'&&V.idx+1<sc.pages.length)idxs.push(V.idx+1);if(idxs.length===2)spread.classList.add('two');
+  const as=await Promise.all(idxs.map(i=>aspect(sc.pages[i]).catch(()=>.707)));if(tok!==V.tok)return;
+  const h=Math.min(H,W/as.reduce((a,b)=>a+b,0))*V.zoom;
+  idxs.forEach((i,j)=>{const sh=makeSheet(sc.pages[i],i,as[j]*h,h);spread.append(sh.el);paintSheet(sh,tok)});stage.scrollTop=0;stage.scrollLeft=0;
+  const st=idxs.length;for(let k=V.idx+st;k<Math.min(sc.pages.length,V.idx+st*2);k++)aspect(sc.pages[k]).then(a=>renderPage(sc.pages[k],a*h*dpr())).catch(()=>{})}
+ updateNav()}
+function makeSheet(p,i,w,h){const el=document.createElement('div');el.className='sheet';el.style.width=w+'px';el.style.height=h+'px';el.innerHTML=`<canvas class="pg"></canvas><canvas class="ann"></canvas><span class="pno">${i+1}</span>`;
+ const s={el,p,i,w,h,pg:el.children[0],ann:el.children[1],painted:false};s.pg.style.filter=sheetFilter();s.ann.width=Math.round(w*dpr());s.ann.height=Math.round(h*dpr());paintAnn(s);bindDraw(s);V.sheets.push(s);return s}
+async function paintSheet(s,tok){if(s.painted)return;s.painted=true;try{const c=await renderPage(s.p,s.w*dpr());if(tok!==V.tok)return;s.pg.width=c.width;s.pg.height=c.height;s.pg.getContext('2d').drawImage(c,0,0)}catch(e){s.painted=false;console.error(e);s.pg.width=600;s.pg.height=80;const x=s.pg.getContext('2d');x.fillStyle='#b33';x.font='20px sans-serif';x.fillText('이 페이지를 열지 못했어요',20,46)}}
+function marks(){const sc=V.score;if(!sc)return[];return sc.sections.map(x=>({...x,pi:sc.pages.findIndex(p=>p.id===x.page)})).filter(x=>x.pi>=0).sort((a,b)=>a.pi-b.pi)}
+function updateNav(){const sc=V.score;const n=sc?sc.pages.length:0;
+ $('#scrub').style.visibility=n>0?'visible':'hidden';if(!sc){syncTools();return}
+ const r=$('#pgRange');r.max=Math.max(1,n);r.value=V.idx+1;const pct=n>1?V.idx/(n-1)*100:0;$('#scKnob').style.left=pct+'%';$('#scFill').style.width=pct+'%';
+ const shown=mode()==='double'&&V.idx+1<n?`${V.idx+1}–${V.idx+2}`:`${V.idx+1}`;const ms=marks();let cur=null;ms.forEach(x=>{if(x.pi<=V.idx)cur=x});
+ const sl=V.set&&S.setlists.find(x=>x.id===V.set);
+ $('#pgLabel').textContent=[sl?`${V.setIdx+1}/${sl.items.length}곡`:'',cur?cur.name:'',`${shown} / ${n}`].filter(Boolean).join(' · ');
+ $('#scDots').innerHTML=ms.map(x=>`<i class="dot" style="left:${n>1?x.pi/(n-1)*100:0}%"></i>`).join('');
+ if(V.pop==='marks'||V.pop==='adjust')renderPop();if(V.pop==='pages')$$('.pcell').forEach(el=>el.classList.toggle('cur',+el.dataset.i===V.idx));syncTools()}
+function flash(d){const el=d>0?$('#flR'):$('#flL');el.classList.add('show');setTimeout(()=>el.classList.remove('show'),60)}
+function go(i,fromAuto){const sc=V.score;if(!sc)return;i=clamp(i,0,sc.pages.length-1);if(mode()==='scroll'){V.idx=i;const t=V.sheets[i];t&&stage.scrollTo({top:t.el.offsetTop-70,behavior:fromAuto?'smooth':'auto'});updateNav();return}
+ if(i===V.idx)return;V.idx=i;layout();if(!fromAuto)AT.acc=0}
+function next(fromAuto){const sc=V.score;if(!sc)return false;
+ if(V.idx+step()<sc.pages.length){flash(1);go(V.idx+step(),fromAuto);if(!fromAuto)AT.acc=0;return true}
+ const sl=V.set&&S.setlists.find(x=>x.id===V.set);if(sl&&V.setIdx+1<sl.items.length){const nid=sl.items[V.setIdx+1];toast(`다음 곡: ${(scoreById(nid)||{}).title||''}`);openScore(nid,{set:sl.id,setIdx:V.setIdx+1,keepAuto:AT.on});AT.acc=0;return true}
+ if(!fromAuto)toast('마지막 페이지예요',1200);return false}
+function prev(){const sc=V.score;if(!sc)return;if(V.idx>0){flash(-1);go(Math.max(0,V.idx-step()));AT.acc=0;return}
+ const sl=V.set&&S.setlists.find(x=>x.id===V.set);if(sl&&V.setIdx>0){openScore(sl.items[V.setIdx-1],{set:sl.id,setIdx:V.setIdx-1,page:'last'});return}toast('첫 페이지예요',1200)}
+$('#pgRange').oninput=e=>go(+e.target.value-1);
+stage.addEventListener('scroll',()=>{if(mode()!=='scroll'||!V.sheets.length)return;const y=stage.scrollTop+innerHeight*.35;let i=0;V.sheets.forEach((s,k)=>{if(s.el.offsetTop<=y)i=k});if(i!==V.idx){V.idx=i;updateNav()}},{passive:true});
+let pd=null;
+stage.addEventListener('pointerdown',e=>{if(V.draw||e.button>0)return;pd={x:e.clientX,y:e.clientY,t:Date.now(),sl:stage.scrollLeft,st:stage.scrollTop}});
+stage.addEventListener('pointerup',e=>{if(!pd||V.draw)return;const dx=e.clientX-pd.x,dy=e.clientY-pd.y,dt=Date.now()-pd.t;const moved=Math.abs(stage.scrollLeft-pd.sl)+Math.abs(stage.scrollTop-pd.st);pd=null;if(moved>4)return;
+ if(mode()!=='scroll'&&V.zoom<=1&&Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)*1.3&&dt<700){dx<0?next():prev();return}
+ if(Math.abs(dx)>10||Math.abs(dy)>10)return;if(V.pop){closePop();return}
+ const fx=e.clientX/innerWidth;const perf=document.body.classList.contains('perf');
+ if((prefs.tap||perf)&&fx<.28)prev();else if((prefs.tap||perf)&&fx>.72)next();else if(!perf)document.body.classList.toggle('noui')});
+document.addEventListener('keydown',e=>{if(!$('#modal').hidden||L.open)return;const tg=e.target.tagName;if(tg==='INPUT'&&e.target.type!=='range'||tg==='TEXTAREA'||tg==='SELECT')return;if(V.pop==='keys'&&/^[a-z;]$/i.test(e.key))return;
+ if(['ArrowRight','PageDown','ArrowDown',' '].includes(e.key)){e.preventDefault();next()}
+ else if(['ArrowLeft','PageUp','ArrowUp'].includes(e.key)){e.preventDefault();prev()}
+ else if(e.key==='Escape'){if(V.draw)setDraw(false);else if(document.body.classList.contains('perf'))setPerf(false);else if(V.pop)closePop();else document.body.classList.remove('noui')}
+ else if(e.key==='Home')go(0);else if(e.key==='End'&&V.score)go(V.score.pages.length-1);
+ else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redo():undo()}});
+window.addEventListener('resize',debounce(()=>layout(),180));
+let wl=null;async function wake(on){try{if(on&&'wakeLock' in navigator&&!wl){wl=await navigator.wakeLock.request('screen');wl.addEventListener('release',()=>wl=null)}else if(!on&&wl){await wl.release();wl=null}}catch(e){wl=null}}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&V.score)wake(true)});
+
+/* chrome tools */
+const TOOLS=[['metro','metro','메트로놈'],['tuner','fork','튜너'],['music','music','음악'],['keys','keys','건반'],['rec','mic','녹음기']];
+const MIDS=[['marks','marks','즐겨찾기'],['adjust','crop','페이지 조정'],['pages','page','페이지'],['perf','perf','성능']];
+function renderPills(){const t=$('#toolsPill');
+ t.innerHTML=prefs.toolsOpen?`<button class="fold" id="toolsFold" aria-label="음악 도구 접기">${ic('left')}</button>`+TOOLS.map(([k,i,l])=>`<button class="tool" data-pop="${k}" data-at="l">${ic(i)}<span>${l}</span></button>`).join(''):`<button class="tool" id="toolsFold">${ic('music')}<span>음악 도구</span></button>`;
+ $('#toolsFold').onclick=()=>{prefs.toolsOpen=!prefs.toolsOpen;savePrefs();renderPills()};
+ $('#midPill').innerHTML=MIDS.map(([k,i,l])=>`<button class="tool" data-pop="${k}" data-at="c">${ic(i)}<span>${l}</span></button>`).join('');
+ $$('[data-pop]').forEach(b=>b.onclick=()=>V.pop===b.dataset.pop?closePop():openPop(b.dataset.pop,b.dataset.at));syncTools()}
+$('#setBtn').innerHTML=ic('gear');
+$('#autoBtn').onclick=()=>V.pop==='auto'?closePop():openPop('auto','tr');$('#setBtn').onclick=()=>V.pop==='settings'?closePop():openPop('settings','tr');
+$('#drawBtn').onclick=()=>setDraw(!V.draw);
+function syncTools(){$$('[data-pop]').forEach(b=>{const k=b.dataset.pop;b.classList.toggle('on',V.pop===k||(k==='metro'&&M.on)||(k==='perf'&&document.body.classList.contains('perf')));b.classList.toggle('live',(k==='rec'&&!!R.mr)||(k==='tuner'&&!!TU.stream))});
+ $('#autoBtn').classList.toggle('on',AT.on||V.pop==='auto');$('#autoBtn').innerHTML=AT.on&&!AT.paused?ic('pause'):ic('auto');$('#setBtn').classList.toggle('on',V.pop==='settings');$('#drawBtn').classList.toggle('on',V.draw)}
+const POPS={metro:'메트로놈',tuner:'튜너',music:'음악',keys:'건반',rec:'녹음기',marks:'즐겨찾기',adjust:'페이지 조정',pages:'페이지',perf:'성능 · 연주 모드',auto:'자동 넘김',settings:'보기 설정'};
+const NEED_SCORE=new Set(['music','rec','marks','adjust','pages','perf','auto']);
+function openPop(k,at){if(NEED_SCORE.has(k)&&!V.score){toast('먼저 악보를 열어 주세요');openLib();return}if(V.draw)setDraw(false);if(V.pop==='tuner'&&k!=='tuner')tunerStop();if(V.pop==='keys'&&k!=='keys')kbAllOff();
+ V.pop=k;const p=$('#pop');p.className='glass at-'+(at||'c')+(k==='keys'?' wide':'');p.hidden=false;$('#popTitle').textContent=POPS[k];renderPop();syncTools()}
+function closePop(){if(V.pop==='tuner')tunerStop();if(V.pop==='keys')kbAllOff();V.pop=null;$('#pop').hidden=true;freeUrls('pop');syncTools()}
+$('#popClose').onclick=closePop;
+function renderPop(){const k=V.pop,b=$('#popBody');if(!k)return;({metro:pMetro,tuner:pTuner,music:pMusic,keys:pKeys,rec:pRec,marks:pMarks,adjust:pAdjust,pages:pPages,perf:pPerf,auto:pAuto,settings:pSettings})[k](b)}
+
+/* bookmarks */
+const PRESETS=['Intro','Verse','Pre-Chorus','Chorus','Interlude','Bridge','Solo','Outro','A','B','C','D.S.','Coda'];
+function pMarks(b){const sc=V.score;const ms=marks();let cur=null;ms.forEach(x=>{if(x.pi<=V.idx)cur=x});
+ b.innerHTML=`<div class="grp"><span class="lbl">${V.idx+1}쪽에 즐겨찾기 추가</span><div class="row"><input class="tx" id="mkName" placeholder="이름 (예: Chorus)" style="flex:1"><button class="btn primary" id="mkAdd">추가</button></div><div class="chips">${PRESETS.map(p=>`<button class="chip" data-pre="${esc(p)}">${esc(p)}</button>`).join('')}</div></div>
+ <div class="grp"><span class="lbl">목록 · 아래 막대에 점으로 표시돼요</span><div class="lst">${ms.length?ms.map(x=>`<div class="li ${cur&&cur.id===x.id?'cur':''}"><button class="g" data-jump="${x.pi}"><b>${esc(x.name)}</b><span>${x.pi+1}쪽</span></button><button class="ib" data-ren="${x.id}" aria-label="이름 바꾸기">${ic('type')}</button><button class="ib" data-del="${x.id}" aria-label="삭제">${ic('x')}</button></div>`).join(''):'<p class="hint">자주 찾아가는 곳(후렴, 간주, D.S.)을 표시해 두면 바로 이동할 수 있어요.</p>'}</div></div>`;
+ const add=n=>{n=n.trim();if(!n)return;const p=sc.pages[V.idx];if(!p)return;sc.sections.push({id:uid(),name:n,page:p.id});saveScore(sc);updateNav();toast(`${V.idx+1}쪽에 "${n}" 표시`)};
+ $('#mkAdd').onclick=()=>add($('#mkName').value);$('#mkName').onkeydown=e=>{if(e.key==='Enter')add(e.target.value)};
+ $$('[data-pre]',b).forEach(x=>x.onclick=()=>add(x.dataset.pre));$$('[data-jump]',b).forEach(x=>x.onclick=()=>go(+x.dataset.jump));
+ $$('[data-del]',b).forEach(x=>x.onclick=()=>{sc.sections=sc.sections.filter(s=>s.id!==x.dataset.del);saveScore(sc);updateNav()});
+ $$('[data-ren]',b).forEach(x=>x.onclick=()=>{const s=sc.sections.find(q=>q.id===x.dataset.ren);promptDlg('이름 바꾸기','이름',s.name,v=>{s.name=v;saveScore(sc);updateNav()})})}
+/* page adjust */
+function pAdjust(b){const sc=V.score,p=sc.pages[V.idx];const f=sc.filter||(sc.filter={b:100,c:100});if(!p){b.innerHTML='<p class="hint">페이지가 없어요.</p>';return}
+ b.innerHTML=`<div class="grp"><span class="lbl">${V.idx+1}쪽 여백 자르기</span>${['위','오른쪽','아래','왼쪽'].map((l,i)=>`<div class="rng"><span class="k">${l}</span><input type="range" min="0" max="35" step="0.5" value="${(p.crop[i]*100).toFixed(1)}" data-crop="${i}" aria-label="${l} 자르기"><output>${(p.crop[i]*100).toFixed(1)}%</output></div>`).join('')}
+ <div class="row"><button class="btn sm" id="adRot">${ic('rot')}90° 돌리기</button><button class="btn sm" id="adAll">모든 페이지에 같게</button><button class="btn sm" id="adReset">원래대로</button></div><p class="hint">필기는 잘라낸 화면 기준으로 붙어요. 여백을 먼저 정리한 뒤 필기하세요.</p></div>
+ <div class="grp"><span class="lbl">밝기 · 대비 (흐린 스캔이나 사진 보정)</span><div class="rng"><span class="k">밝기</span><input type="range" id="adB" min="60" max="140" value="${f.b}"><output id="adBo">${f.b}%</output></div><div class="rng"><span class="k">대비</span><input type="range" id="adC" min="60" max="240" value="${f.c}"><output id="adCo">${f.c}%</output></div>
+ <div class="row"><button class="btn sm" id="adScan">사진 찍은 악보 선명하게</button><button class="btn sm" id="adFReset">보정 끄기</button></div></div>`;
+ const relay=debounce(()=>{layout();regenThumb()},250);
+ $$('[data-crop]',b).forEach(el=>el.oninput=()=>{p.crop[+el.dataset.crop]=+el.value/100;el.nextElementSibling.textContent=(+el.value).toFixed(1)+'%';saveScore(sc);relay()});
+ $('#adRot').onclick=()=>{p.rot=(p.rot+90)%360;saveScore(sc);layout();regenThumb()};
+ $('#adAll').onclick=()=>{sc.pages.forEach(q=>q.crop=p.crop.slice());saveScore(sc);layout();regenThumb();toast('모든 페이지에 같은 여백을 적용했어요')};
+ $('#adReset').onclick=()=>{p.crop=[0,0,0,0];p.rot=0;saveScore(sc);layout();regenThumb()};
+ const fl=()=>{V.sheets.forEach(s=>s.pg.style.filter=sheetFilter());saveScore(sc)};
+ $('#adB').oninput=e=>{f.b=+e.target.value;$('#adBo').textContent=f.b+'%';fl()};$('#adC').oninput=e=>{f.c=+e.target.value;$('#adCo').textContent=f.c+'%';fl()};
+ $('#adScan').onclick=()=>{f.b=112;f.c=165;fl();renderPop()};$('#adFReset').onclick=()=>{f.b=100;f.c=100;fl();renderPop()}}
+/* pages */
+function pPages(b){const sc=V.score;
+ b.innerHTML=`<div class="row"><button class="btn sm" id="pgAdd">${ic('plus')}페이지 추가</button><button class="btn sm" id="pgDup">${ic('copy')}${V.idx+1}쪽 복제</button><button class="btn sm" id="pgExp">${ic('dl')}PNG로 저장</button></div>
+ <div class="pgrid">${sc.pages.map((p,i)=>`<div class="pcell ${i===V.idx?'cur':''}" data-i="${i}"><button class="th" data-pgo="${i}" aria-label="${i+1}쪽으로"><canvas data-th="${i}"></canvas></button><small>${i+1}${(V.ann[p.id]||[]).length?' ✎':''}</small><div class="acts"><button class="ib" data-pl="${i}" aria-label="앞으로" ${i?'':'disabled'}>${ic('left')}</button><button class="ib" data-pr="${i}" aria-label="뒤로" ${i<sc.pages.length-1?'':'disabled'}>${ic('right')}</button><button class="ib" data-prot="${i}" aria-label="돌리기">${ic('rot')}</button><button class="ib" data-pdel="${i}" aria-label="삭제">${ic('trash')}</button></div></div>`).join('')}</div>
+ <p class="hint">도돌이표나 D.S.로 앞 페이지로 돌아가는 곡은 그 페이지를 복제해 순서대로 끼워 두면 넘기기만으로 연주할 수 있어요.</p>`;
+ const after=()=>{saveScore(sc);V.idx=clamp(V.idx,0,Math.max(0,sc.pages.length-1));layout();renderPop();regenThumb()};
+ $$('[data-pgo]',b).forEach(x=>x.onclick=()=>go(+x.dataset.pgo));
+ $$('[data-pl]',b).forEach(x=>x.onclick=()=>{const i=+x.dataset.pl;[sc.pages[i-1],sc.pages[i]]=[sc.pages[i],sc.pages[i-1]];if(V.idx===i)V.idx--;after()});
+ $$('[data-pr]',b).forEach(x=>x.onclick=()=>{const i=+x.dataset.pr;[sc.pages[i+1],sc.pages[i]]=[sc.pages[i],sc.pages[i+1]];if(V.idx===i)V.idx++;after()});
+ $$('[data-prot]',b).forEach(x=>x.onclick=()=>{const q=sc.pages[+x.dataset.prot];q.rot=(q.rot+90)%360;after()});
+ $$('[data-pdel]',b).forEach(x=>x.onclick=()=>confirmDlg('페이지 삭제',`${+x.dataset.pdel+1}쪽을 빼고 그 페이지 필기도 지울까요?`,'삭제',()=>{const [q]=sc.pages.splice(+x.dataset.pdel,1);delete V.ann[q.id];sc.sections=sc.sections.filter(s=>s.page!==q.id);saveAnn();after()}));
+ $('#pgAdd').onclick=()=>$('#pageIn').click();
+ $('#pgDup').onclick=()=>{const p=sc.pages[V.idx];if(!p)return;const q={id:uid(),src:{...p.src},rot:p.rot,crop:p.crop.slice()};sc.pages.splice(V.idx+1,0,q);V.ann[q.id]=JSON.parse(JSON.stringify(V.ann[p.id]||[]));saveAnn();toast(`${V.idx+1}쪽을 바로 뒤에 복제했어요`);after()};
+ $('#pgExp').onclick=exportPage;
+ $$('[data-th]',b).forEach(async cv=>{const i=+cv.dataset.th;try{const c=await renderPage(sc.pages[i],120);cv.width=c.width;cv.height=c.height;cv.getContext('2d').drawImage(c,0,0)}catch(e){}})}
+$('#pageIn').onchange=async e=>{const files=[...e.target.files];e.target.value='';if(!files.length||!V.score)return;toast('페이지를 추가하는 중…');const pages=await filesToPages(files);V.score.pages.push(...pages);await saveScore(V.score);layout();renderPop();regenThumb();toast(`${pages.length}쪽을 끝에 추가했어요`)};
+async function exportPage(){const sc=V.score,p=sc&&sc.pages[V.idx];if(!p)return;try{const c=await renderPage(p,1800);const out=document.createElement('canvas');out.width=c.width;out.height=c.height;const x=out.getContext('2d');x.drawImage(c,0,0);for(const it of V.ann[p.id]||[])drawItem(x,it,out.width,out.height);
+ const blob=await new Promise(r=>out.toBlob(r,'image/png'));saveFile(safeName(`${sc.title} ${V.idx+1}쪽.png`),blob)}catch(e){toast('이미지를 만들지 못했어요')}}
+/* performance */
+function pPerf(b){const a=V.score.auto;b.innerHTML=`<p class="hint" style="font-size:13px;color:var(--ink)">연주 모드에서는 메뉴가 모두 사라지고 필기가 잠겨요. 화면 왼쪽·오른쪽 끝을 탭하거나 페달로 넘기세요.</p>
+ <label class="check"><input type="checkbox" id="pfAuto" ${a.startWithPerf?'checked':''}> 자동 넘김도 시작 (${a.mode==='bpm'?`${a.bpm} BPM, 페이지당 ${a.bars}마디`:a.mode==='time'?`페이지당 ${fmtTime(a.sec)}`:'흘려 보기'})</label>
+ <label class="check"><input type="checkbox" id="pfMetro" ${a.metroWithPerf?'checked':''}> 메트로놈도 켜기</label>
+ <label class="check"><input type="checkbox" id="pfFirst" ${a.fromStart!==false?'checked':''}> 첫 페이지부터 시작</label>
+ <button class="btn primary" id="pfGo">${icFill('play')}연주 모드 시작</button><button class="btn sm" id="pfCfg" style="align-self:flex-start">자동 넘김 설정 바꾸기</button>`;
+ $('#pfAuto').onchange=e=>{a.startWithPerf=e.target.checked;saveScore(V.score)};$('#pfMetro').onchange=e=>{a.metroWithPerf=e.target.checked;saveScore(V.score)};$('#pfFirst').onchange=e=>{a.fromStart=e.target.checked;saveScore(V.score)};
+ $('#pfCfg').onclick=()=>openPop('auto','tr');
+ $('#pfGo').onclick=()=>{closePop();if(a.fromStart!==false)go(0);setPerf(true);if(a.metroWithPerf&&!M.on)metroStart();if(a.startWithPerf)atStart()}}
+function setPerf(on){document.body.classList.toggle('perf',on);document.body.classList.remove('noui');$('#perfExit').hidden=!on;if(on){closePop();setDraw(false);try{!document.fullscreenElement&&document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen().catch(()=>{})}catch(e){}}else{try{document.fullscreenElement&&document.exitFullscreen().catch(()=>{})}catch(e){}}wake(true);syncTools();setTimeout(layout,150)}
+$('#perfExit').onclick=()=>setPerf(false);
+/* auto */
+function pAuto(b){const a=V.score.auto;const per=a.mode==='bpm'?60/a.bpm*a.beats*a.bars:a.sec;
+ b.innerHTML=`<div class="seg" id="amode"><button data-m="bpm" class="${a.mode==='bpm'?'on':''}">박자로</button><button data-m="time" class="${a.mode==='time'?'on':''}">시간으로</button><button data-m="scroll" class="${a.mode==='scroll'?'on':''}">흘려 보기</button></div>
+ ${a.mode==='bpm'?`<div class="row"><label class="field"><span>BPM</span><input class="tx num" type="number" id="aBpm" min="20" max="300" value="${a.bpm}"></label><label class="field"><span>마디당 박</span><input class="tx num" type="number" id="aBeats" min="1" max="16" value="${a.beats}"></label><label class="field"><span>페이지당 마디</span><input class="tx num" type="number" id="aBars" min="1" max="99" value="${a.bars}"></label></div><p class="hint">한 페이지에 약 <b id="aPer">${per.toFixed(1)}</b>초${mode()==='double'?' (두 쪽 보기는 2배)':''} 머물러요.</p>`:''}
+ ${a.mode==='time'?`<div class="rng"><span class="k">페이지당</span><input type="range" id="aSec" min="3" max="240" value="${a.sec}"><output id="aSecO">${fmtTime(a.sec)}</output></div>`:''}
+ ${a.mode==='scroll'?`<div class="rng"><span class="k">속도</span><input type="range" id="aSpd" min="4" max="160" value="${a.speed}"><output id="aSpdO">${a.speed}px/초</output></div><p class="hint">세로 스크롤 보기로 바뀌어요. 연주 중에도 속도를 바꿀 수 있어요.</p>`:''}
+ ${a.mode!=='scroll'?`<label class="check"><input type="checkbox" id="aCount" ${a.countIn?'checked':''}> 시작 전 한 마디 카운트인</label>`:''}
+ <div class="row"><button class="btn primary wide" id="aGo">${AT.on?(AT.paused?'계속':'일시정지'):'자동 넘김 시작'}</button>${AT.on?`<button class="btn" id="aStop">정지</button>`:''}</div>
+ <p class="hint">손으로 넘기면 그 페이지부터 다시 셉니다. 페달·키보드(<span class="kbd">←</span> <span class="kbd">→</span> <span class="kbd">Space</span>)도 돼요. 화면 맨 위의 가는 막대가 남은 시간이에요.</p>`;
+ const sv=()=>saveScore(V.score);
+ $$('#amode button',b).forEach(x=>x.onclick=()=>{a.mode=x.dataset.m;if(a.mode==='scroll'&&mode()!=='scroll'){prefs.mode='scroll';savePrefs();layout()}sv();renderPop()});
+ [['aBpm','bpm',20,300],['aBeats','beats',1,16],['aBars','bars',1,99]].forEach(([id,k,mn,mx])=>{const el=$('#'+id);el&&(el.onchange=()=>{a[k]=clamp(+el.value||a[k],mn,mx);el.value=a[k];$('#aPer').textContent=(60/a.bpm*a.beats*a.bars).toFixed(1);sv()})});
+ $('#aSec')&&($('#aSec').oninput=e=>{a.sec=+e.target.value;$('#aSecO').textContent=fmtTime(a.sec);sv()});
+ $('#aSpd')&&($('#aSpd').oninput=e=>{a.speed=+e.target.value;$('#aSpdO').textContent=a.speed+'px/초';sv()});
+ $('#aCount')&&($('#aCount').onchange=e=>{a.countIn=e.target.checked;sv()});
+ $('#aGo').onclick=()=>{if(!AT.on){closePop();atStart()}else atPause(!AT.paused)};$('#aStop')&&($('#aStop').onclick=atStop)}
+/* settings */
+function pSettings(b){b.innerHTML=`<div class="grp"><span class="lbl">페이지 보기</span><div class="seg" id="vMode">${[['auto','자동'],['single','한 쪽'],['double','두 쪽'],['scroll','세로']].map(([k,l])=>`<button data-m="${k}" class="${prefs.mode===k?'on':''}">${l}</button>`).join('')}</div><p class="hint">자동은 가로 화면에서 두 쪽, 세로 화면에서 한 쪽을 보여 줘요.</p></div>
+ <div class="grp"><span class="lbl">확대</span><div class="row"><button class="btn sm" id="zOut" aria-label="축소">−</button><span style="font-family:var(--f-mono);min-width:52px;text-align:center" id="zLbl">${Math.round(V.zoom*100)}%</span><button class="btn sm" id="zIn" aria-label="확대">+</button><button class="btn sm" id="zFit">맞춤</button></div></div>
+ <div class="grp"><span class="lbl">넘기기</span><label class="check"><input type="checkbox" id="vTap" ${prefs.tap?'checked':''}> 화면 왼쪽·오른쪽 끝 탭으로 넘기기</label><p class="hint">가운데를 탭하면 메뉴가 숨거나 나타나요. 옆으로 쓸어도 넘어가고, 블루투스 페달은 <span class="kbd">→</span> <span class="kbd">PageDown</span> 키로 바로 쓸 수 있어요.</p></div>
+ <div class="grp"><span class="lbl">화면</span><label class="check"><input type="checkbox" id="vNight" ${prefs.night?'checked':''}> 야간 모드 (악보를 어둡게 반전)</label>
+ <div class="seg" id="vTheme">${[['system','시스템 테마'],['light','밝게'],['dark','어둡게']].map(([k,l])=>`<button data-t="${k}" class="${prefs.theme===k?'on':''}">${l}</button>`).join('')}</div></div>
+ <div class="grp"><span class="lbl">서재</span><div class="row"><button class="btn sm" id="vUp">${ic('upload')}악보 올리기</button><button class="btn sm" id="vBk">${ic('dl')}백업 저장</button><button class="btn sm" id="vRs">백업 불러오기</button></div><p class="hint">악보는 이 기기에만 저장돼요. 다른 기기로 옮기거나 앱을 지우기 전에는 백업 파일을 저장하세요.</p></div>
+ <div class="grp"><span class="lbl">앱 설치</span><p class="hint">${STANDALONE?'홈 화면 앱으로 실행 중이에요. 인터넷 없이도 열려요.':'아이패드 Safari에서 공유 버튼 → <b>홈 화면에 추가</b>를 누르면 앱처럼 설치돼요.'}</p></div>`;
+ $$('#vMode button',b).forEach(x=>x.onclick=()=>{prefs.mode=x.dataset.m;savePrefs();V.zoom=1;layout();renderPop()});
+ const z=v=>{V.zoom=clamp(v,.5,3);$('#zLbl').textContent=Math.round(V.zoom*100)+'%';layout()};$('#zIn').onclick=()=>z(V.zoom+.25);$('#zOut').onclick=()=>z(V.zoom-.25);$('#zFit').onclick=()=>z(1);
+ $('#vTap').onchange=e=>{prefs.tap=e.target.checked;savePrefs()};$('#vNight').onchange=e=>{prefs.night=e.target.checked;savePrefs();V.sheets.forEach(s=>s.pg.style.filter=sheetFilter())};
+ $$('#vTheme button',b).forEach(x=>x.onclick=()=>{prefs.theme=x.dataset.t;savePrefs();applyTheme();renderPop()});
+ $('#vUp').onclick=()=>$('#fileIn').click();$('#vBk').onclick=exportBackup;$('#vRs').onclick=()=>$('#backupIn').click()}
+
+/* annotations */
+const saveAnn=debounce(()=>{if(V.score)DB.put('ann',{id:V.score.id,pages:V.ann})},400);
+function paintAnn(s){const c=s.ann,x=c.getContext('2d'),W=c.width,H=c.height;x.clearRect(0,0,W,H);for(const it of V.ann[s.p.id]||[])drawItem(x,it,W,H)}
+function drawItem(x,it,W,H){x.save();if(it.t==='txt'){x.fillStyle=it.c;x.font=`italic 700 ${it.s*W}px "Gowun Batang",Georgia,serif`;x.textAlign='center';x.textBaseline='middle';x.fillText(it.v,it.x*W,it.y*H)}
+ else{const p=it.p;x.globalAlpha=it.t==='hl'?.38:1;x.strokeStyle=it.c;x.lineWidth=Math.max(1,it.w*W);x.lineCap=it.t==='hl'?'butt':'round';x.lineJoin='round';x.beginPath();x.moveTo(p[0]*W,p[1]*H);
+  if(p.length===2)x.lineTo(p[0]*W+.1,p[1]*H);for(let i=2;i<p.length-2;i+=2)x.quadraticCurveTo(p[i]*W,p[i+1]*H,(p[i]+p[i+2])/2*W,(p[i+1]+p[i+3])/2*H);if(p.length>2)x.lineTo(p[p.length-2]*W,p[p.length-1]*H);x.stroke()}x.restore()}
+function snap(pid){V.hist.push({pid,items:JSON.parse(JSON.stringify(V.ann[pid]||[]))});if(V.hist.length>80)V.hist.shift();V.redo=[]}
+function repaintPage(pid){V.sheets.filter(s=>s.p.id===pid).forEach(paintAnn)}
+function undo(){const h=V.hist.pop();if(!h){toast('되돌릴 필기가 없어요',1200);return}V.redo.push({pid:h.pid,items:V.ann[h.pid]||[]});V.ann[h.pid]=h.items;repaintPage(h.pid);saveAnn()}
+function redo(){const h=V.redo.pop();if(!h)return;V.hist.push({pid:h.pid,items:V.ann[h.pid]||[]});V.ann[h.pid]=h.items;repaintPage(h.pid);saveAnn()}
+function bindDraw(s){let cur=null,erasing=false;const c=s.ann;const pos=e=>{const r=c.getBoundingClientRect();return[(e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height]};
+ const eraseAt=([x,y])=>{const list=V.ann[s.p.id]||[];const ar=s.w/s.h;const keep=list.filter(it=>{if(it.t==='txt')return Math.hypot((it.x-x)*ar,it.y-y)>it.s*ar*.8;for(let i=0;i<it.p.length;i+=2)if(Math.hypot((it.p[i]-x)*ar,it.p[i+1]-y)<.018+it.w*ar)return false;return true});if(keep.length!==list.length){V.ann[s.p.id]=keep;paintAnn(s)}};
+ c.addEventListener('pointerdown',e=>{if(!V.draw)return;if(prefs.penOnly&&e.pointerType==='touch')return;e.preventDefault();e.stopPropagation();c.setPointerCapture(e.pointerId);const pt=pos(e);
+  if(T.tool==='txt'){const v=T.custom.trim()||T.stamp;if(!v)return;snap(s.p.id);(V.ann[s.p.id]=V.ann[s.p.id]||[]).push({t:'txt',c:T.color,s:.012+T.size*.006,x:pt[0],y:pt[1],v});paintAnn(s);saveAnn();return}
+  snap(s.p.id);if(T.tool==='eraser'){erasing=true;eraseAt(pt);return}
+  cur={t:T.tool==='hl'?'hl':'pen',c:T.color,w:T.tool==='hl'?(.006+T.size*.003):(.0008+T.size*.0008),p:[pt[0],pt[1]]};(V.ann[s.p.id]=V.ann[s.p.id]||[]).push(cur);paintAnn(s)});
+ c.addEventListener('pointermove',e=>{if(!cur&&!erasing)return;e.preventDefault();const evs=e.getCoalescedEvents?e.getCoalescedEvents():[];for(const ev of (evs.length?evs:[e])){const pt=pos(ev);if(erasing)eraseAt(pt);else{const n=cur.p.length;if(Math.hypot(pt[0]-cur.p[n-2],pt[1]-cur.p[n-1])>.0015)cur.p.push(+pt[0].toFixed(4),+pt[1].toFixed(4))}}if(cur)paintAnn(s)});
+ const end=()=>{if(cur||erasing){cur=null;erasing=false;saveAnn()}};c.addEventListener('pointerup',end);c.addEventListener('pointercancel',end)}
+const COLORS=[['#1a1a1a','검정'],['#d12f2f','빨강'],['#1f5fd1','파랑'],['#1d8a4a','초록'],['#f2c200','노랑']];
+const STAMPS=['♯','♭','♮','pp','p','mp','mf','f','ff','sfz','cresc.','dim.','rit.','a tempo','V','⌒','1','2','3','4','5','T','H','P','sl.','×'];
+function setDraw(on){if(on&&!V.score){toast('먼저 악보를 열어 주세요');return}V.draw=on;stage.classList.toggle('drawing',on);$('#drawbar').hidden=!on;$('#pills').style.visibility=on?'hidden':'visible';if(on){closePop();document.body.classList.remove('noui');renderDrawbar()}syncTools()}
+function renderDrawbar(){const b=$('#drawbar');const tb=(k,i,l)=>`<button class="ib ${T.tool===k?'on':''}" data-dt="${k}" title="${l}" aria-label="${l}">${ic(i)}</button>`;
+ b.innerHTML=`<div class="tools">${tb('pen','pen','펜')}${tb('hl','hl','형광펜')}${tb('eraser','eraser','지우개')}${tb('txt','type','기호·글자')}<span class="sep"></span>
+ ${COLORS.map(([c,l])=>`<button class="swc ${T.color===c?'on':''}" data-c="${c}" style="background:${c}" aria-label="${l}"></button>`).join('')}<span class="sep"></span>
+ <input type="range" id="dSize" min="1" max="10" value="${T.size}" aria-label="굵기"><span class="sep"></span>
+ <button class="ib" id="dUndo" aria-label="되돌리기">${ic('undo')}</button><button class="ib" id="dRedo" aria-label="다시하기">${ic('redo')}</button>
+ <button class="ib ${prefs.penOnly?'on':''}" id="dPen" title="펜으로만 그리기" aria-label="펜으로만 그리기">${ic('hand')}</button><button class="ib" id="dClear" aria-label="이 페이지 필기 지우기">${ic('trash')}</button>
+ <button class="btn sm primary" id="dDone">완료</button></div>
+ ${T.tool==='txt'?`<div class="stamps">${STAMPS.map(s=>`<button data-st="${esc(s)}" class="${!T.custom&&T.stamp===s?'on':''}">${esc(s)}</button>`).join('')}<input class="tx" id="dCustom" placeholder="직접 입력" value="${esc(T.custom)}"></div>`:''}`;
+ $$('[data-dt]',b).forEach(x=>x.onclick=()=>{T.tool=x.dataset.dt;if(T.tool==='hl'&&T.color==='#1a1a1a')T.color='#f2c200';renderDrawbar()});
+ $$('[data-c]',b).forEach(x=>x.onclick=()=>{T.color=x.dataset.c;renderDrawbar()});$$('[data-st]',b).forEach(x=>x.onclick=()=>{T.stamp=x.dataset.st;T.custom='';renderDrawbar()});
+ $('#dCustom')&&($('#dCustom').oninput=e=>{T.custom=e.target.value;$$('[data-st]',b).forEach(x=>x.classList.remove('on'))});
+ $('#dSize').oninput=e=>T.size=+e.target.value;$('#dUndo').onclick=undo;$('#dRedo').onclick=redo;$('#dDone').onclick=()=>setDraw(false);
+ $('#dPen').onclick=()=>{prefs.penOnly=!prefs.penOnly;savePrefs();renderDrawbar();toast(prefs.penOnly?'펜으로만 그려요. 손가락으로는 화면을 움직여요.':'손가락과 펜 모두 그려요.')};
+ $('#dClear').onclick=()=>{const ids=V.sheets.filter(s=>mode()!=='scroll'||s.i===V.idx).map(s=>s.p.id);ids.forEach(pid=>{if((V.ann[pid]||[]).length){snap(pid);V.ann[pid]=[];repaintPage(pid)}});saveAnn();toast('필기를 지웠어요. 되돌리기로 살릴 수 있어요.')}}
+
+/* audio core + metronome */
+const M={ctx:null,on:false,bpm:90,beats:4,next:0,beat:0,timer:0};
+function actx(){if(!M.ctx){const C=window.AudioContext||window.webkitAudioContext;if(!C)return null;M.ctx=new C()}if(M.ctx.state==='suspended')M.ctx.resume();return M.ctx}
+function click(t,acc){const c=M.ctx,o=c.createOscillator(),g=c.createGain();o.type='square';o.frequency.value=acc?1760:1100;g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(acc?.35:.22,t+.002);g.gain.exponentialRampToValueAtTime(0.0001,t+.05);o.connect(g).connect(c.destination);o.start(t);o.stop(t+.06)}
+function metroCfg(){return (V.score&&V.score.metro)||LS.get('metro',{bpm:90,beats:4})}
+function saveMetro(m){if(V.score){V.score.metro=m;saveScore(V.score)}else LS.set('metro',m)}
+function metroStart(){const c=actx();if(!c){toast('이 브라우저는 소리를 낼 수 없어요');return}const m=metroCfg();M.bpm=m.bpm;M.beats=m.beats;M.on=true;M.beat=0;M.next=c.currentTime+.08;clearInterval(M.timer);
+ M.timer=setInterval(()=>{while(M.next<M.ctx.currentTime+.12){const i=M.beat%M.beats,t=M.next;click(t,i===0);setTimeout(()=>$$('#mDots i').forEach((el,k)=>el.classList.toggle('hit',k===i)),Math.max(0,(t-M.ctx.currentTime)*1000));M.next+=60/M.bpm;M.beat++}},25);syncTools()}
+function metroStop(){M.on=false;clearInterval(M.timer);$$('#mDots i').forEach(el=>el.classList.remove('hit'));syncTools()}
+function pMetro(b){const m=metroCfg();
+ b.innerHTML=`<div class="big" id="mBpm">${m.bpm}</div><p class="hint" style="text-align:center;margin-top:-6px">BPM</p>
+ <div class="rng"><button class="ib" id="mMinus" aria-label="느리게">−</button><input type="range" id="mR" min="30" max="260" value="${m.bpm}" aria-label="빠르기"><button class="ib" id="mPlus" aria-label="빠르게">+</button></div>
+ <div class="beats" id="mDots">${Array.from({length:m.beats},(_,i)=>`<i class="${i===0?'acc':''}"></i>`).join('')}</div>
+ <div class="seg" id="mBeats">${[2,3,4,5,6,7].map(n=>`<button data-b="${n}" class="${m.beats===n?'on':''}">${n}/4</button>`).join('')}</div>
+ <div class="row"><button class="btn primary wide" id="mGo">${M.on?'멈추기':'시작'}</button><button class="btn" id="mTap">탭 템포</button></div>
+ ${V.score?`<button class="btn sm" id="mSync" style="align-self:flex-start">자동 넘김 빠르기(${V.score.auto.bpm})에 맞추기</button>`:''}`;
+ const setB=v=>{m.bpm=clamp(Math.round(v),30,260);$('#mBpm').textContent=m.bpm;$('#mR').value=m.bpm;M.bpm=m.bpm;saveMetro(m)};
+ $('#mR').oninput=e=>setB(+e.target.value);$('#mMinus').onclick=()=>setB(m.bpm-1);$('#mPlus').onclick=()=>setB(m.bpm+1);
+ $$('#mBeats button',b).forEach(x=>x.onclick=()=>{m.beats=+x.dataset.b;M.beats=m.beats;saveMetro(m);renderPop()});
+ $('#mGo').onclick=()=>{M.on?metroStop():metroStart();renderPop()};$('#mSync')&&($('#mSync').onclick=()=>setB(V.score.auto.bpm));
+ let taps=[];$('#mTap').onclick=()=>{const t=performance.now();taps=taps.filter(x=>t-x<2500);taps.push(t);if(taps.length>1)setB(60000/((taps[taps.length-1]-taps[0])/(taps.length-1)))}}
+async function countIn(bpm,beats){const c=actx();if(!c)return;const ov=$('#countin');const t0=c.currentTime+.1,sp=60/bpm;for(let i=0;i<beats;i++)click(t0+i*sp,i===0);
+ ov.hidden=false;for(let i=0;i<beats;i++){await sleep(Math.max(0,(t0+i*sp-c.currentTime)*1000));if(!AT.on)break;$('#countinN').textContent=beats-i}await sleep(sp*1000);ov.hidden=true}
+function micMsg(e){const inFrame=window.self!==window.top;if(e&&e.name==='NotAllowedError'&&!inFrame)return '마이크 사용이 허용되지 않았어요. 주소창의 권한 설정에서 마이크를 허용한 뒤 다시 눌러 주세요.';
+ if(!inFrame)return '마이크를 쓸 수 없어요. 설정 앱 → Safari(또는 이 앱) → 마이크에서 허용한 뒤 다시 눌러 주세요.';return '이 화면에서는 마이크를 쓸 수 없어요. 아이패드에 설치한 앱이나 Safari에서 직접 열면 마이크를 쓸 수 있어요.'}
+async function getMic(){if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error('nomic');return navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}})}
+
+/* tuner */
+const NOTE=['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
+const TUNINGS={std:['기타 표준 (E A D G B E)',[40,45,50,55,59,64]],half:['기타 반음 내림 (E♭)',[39,44,49,54,58,63]],dropd:['기타 드롭 D',[38,45,50,55,59,64]],uke:['우쿨렐레 (G C E A)',[67,60,64,69]],bass:['베이스 4현',[28,33,38,43]],violin:['바이올린 (G D A E)',[55,62,69,76]]};
+const midiName=m=>NOTE[((m%12)+12)%12]+(Math.floor(m/12)-1);
+const mFreq=m=>prefs.a4*2**((m-69)/12);
+const TU={stream:null,an:null,raf:0,buf:null,last:0,err:''};
+function tone(f,dur=2.2){const c=actx();if(!c)return;const t=c.currentTime,o=c.createOscillator(),g=c.createGain();o.type='triangle';o.frequency.value=f;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.3,t+.02);g.gain.exponentialRampToValueAtTime(.0001,t+dur);o.connect(g).connect(c.destination);o.start(t);o.stop(t+dur+.05)}
+function pTuner(b){const tn=TUNINGS[prefs.tuning]||TUNINGS.std;
+ b.innerHTML=`<div class="tuner-note"><b id="tuN">–</b><span id="tuF">${TU.stream?'소리를 내 보세요':'마이크 튜너를 켜거나 아래 기준음을 들으며 맞추세요'}</span></div>
+ <div class="tuner-dial"><div class="scale"></div>${[-50,-40,-30,-20,-10,0,10,20,30,40,50].map(v=>`<i class="tick ${v===0?'z':''}" style="left:${50+v*.84}%"></i>`).join('')}<i class="needle" id="tuNeedle"></i></div>
+ ${TU.err?`<div class="notice">${TU.err}</div>`:''}
+ <button class="btn ${TU.stream?'':'primary'}" id="tuMic">${ic('mic')}${TU.stream?'마이크 튜너 끄기':'마이크 튜너 켜기'}</button>
+ <div class="grp"><span class="lbl">기준음 듣기</span><div class="strings">${tn[1].map((m,i)=>`<button data-tm="${m}"><b>${midiName(m)}</b><small>${tn[1].length-i}번 줄</small></button>`).join('')}</div>
+ <select class="tx" id="tuSel" aria-label="튜닝">${Object.entries(TUNINGS).map(([k,v])=>`<option value="${k}" ${prefs.tuning===k?'selected':''}>${v[0]}</option>`).join('')}</select>
+ <div class="rng"><span class="k">A4</span><input type="range" id="tuA" min="430" max="450" value="${prefs.a4}" aria-label="기준 주파수"><output id="tuAo">${prefs.a4}Hz</output></div></div>`;
+ $('#tuMic').onclick=()=>TU.stream?(tunerStop(),renderPop()):tunerStart();
+ $$('[data-tm]',b).forEach(x=>x.onclick=()=>tone(mFreq(+x.dataset.tm),2.4));
+ $('#tuSel').onchange=e=>{prefs.tuning=e.target.value;savePrefs();renderPop()};
+ $('#tuA').oninput=e=>{prefs.a4=+e.target.value;$('#tuAo').textContent=prefs.a4+'Hz';savePrefs()}}
+async function tunerStart(){TU.err='';try{TU.stream=await getMic()}catch(e){TU.err=micMsg(e);renderPop();return}
+ const c=actx();const src=c.createMediaStreamSource(TU.stream);TU.an=c.createAnalyser();TU.an.fftSize=4096;src.connect(TU.an);TU.buf=new Float32Array(TU.an.fftSize);renderPop();syncTools();
+ const loop=t=>{TU.raf=requestAnimationFrame(loop);if(t-TU.last<90)return;TU.last=t;TU.an.getFloatTimeDomainData(TU.buf);const f=pitch(TU.buf,c.sampleRate);if(f<=0||f>2000)return;
+  const n=12*Math.log2(f/prefs.a4)+69,m=Math.round(n),cents=Math.round((n-m)*100);const nn=$('#tuN');if(!nn)return;nn.textContent=midiName(m);$('#tuF').textContent=`${f.toFixed(1)} Hz · ${cents>0?'+':''}${cents} cent`;
+  const nd=$('#tuNeedle');nd.style.transform=`rotate(${clamp(cents,-50,50)*1.1}deg)`;nd.classList.toggle('ok',Math.abs(cents)<=5);
+  $$('[data-tm]').forEach(x=>x.classList.toggle('hit',+x.dataset.tm===m))};TU.raf=requestAnimationFrame(loop)}
+function tunerStop(){cancelAnimationFrame(TU.raf);if(TU.stream)TU.stream.getTracks().forEach(t=>t.stop());TU.stream=null;syncTools()}
+function pitch(buf,sr){const N=buf.length;let rms=0;for(let i=0;i<N;i++)rms+=buf[i]*buf[i];if(Math.sqrt(rms/N)<.01)return -1;
+ const size=Math.min(N,2048),c=new Float32Array(size);for(let lag=0;lag<size;lag++){let s=0;for(let j=0;j<size-lag;j++)s+=buf[j]*buf[j+lag];c[lag]=s}
+ let d=0;while(d<size-1&&c[d]>c[d+1])d++;let mv=-1,mp=-1;for(let i=d;i<size;i++)if(c[i]>mv){mv=c[i];mp=i}if(mp<=0)return -1;
+ const x1=c[mp-1]||0,x2=c[mp],x3=c[mp+1]||0,a=(x1+x3-2*x2)/2,bb=(x3-x1)/2;const T0=a?mp-bb/(2*a):mp;return sr/T0}
+
+/* keyboard */
+const KB={on:new Map(),down:new Map()};
+function pianoNote(m){const c=actx();if(!c)return null;const f=440*2**((m-69)/12),t=c.currentTime;const g=c.createGain();g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.32,t+.006);g.gain.exponentialRampToValueAtTime(.12,t+.35);g.gain.exponentialRampToValueAtTime(.0001,t+2.6);
+ const lp=c.createBiquadFilter();lp.type='lowpass';lp.frequency.value=Math.min(9000,f*6);const o1=c.createOscillator();o1.type='triangle';o1.frequency.value=f;const o2=c.createOscillator();o2.type='sine';o2.frequency.value=f*2;const g2=c.createGain();g2.gain.value=.22;
+ o1.connect(lp);o2.connect(g2).connect(lp);lp.connect(g).connect(c.destination);o1.start(t);o2.start(t);o1.stop(t+2.7);o2.stop(t+2.7);
+ return{off(){const n=c.currentTime;try{g.gain.cancelScheduledValues(n);g.gain.setValueAtTime(g.gain.value,n);g.gain.setTargetAtTime(.0001,n,.12);o1.stop(n+.6);o2.stop(n+.6)}catch(e){}}}}
+function kbAllOff(){KB.on.forEach(v=>v&&v.off());KB.on.clear();KB.down.clear()}
+function pKeys(b){const oct=prefs.kbOct;const base=12*(oct+1);const whites=[];for(let o=0;o<2;o++)[0,2,4,5,7,9,11].forEach(s=>whites.push(base+o*12+s));whites.push(base+24);const N=whites.length,ww=100/N;
+ const blacks=[];whites.forEach((m,i)=>{if(i<N-1&&[0,2,5,7,9].includes(m%12))blacks.push({m:m+1,left:(i+1)*ww-ww*.31})});
+ b.innerHTML=`<div class="row" style="justify-content:space-between"><div class="row"><button class="btn sm" id="kbDn" aria-label="한 옥타브 아래">${ic('left')}</button><span style="font-family:var(--f-mono);min-width:72px;text-align:center">C${oct} – C${oct+2}</span><button class="btn sm" id="kbUp" aria-label="한 옥타브 위">${ic('right')}</button></div><span class="hint">컴퓨터 자판 A W S E D F T G Y H U J K로도 쳐요</span></div>
+ <div class="kb" id="kb">${whites.map(m=>`<button class="w" data-m="${m}" tabindex="-1" aria-label="${midiName(m)}">${m%12===0?midiName(m):''}</button>`).join('')}${blacks.map(x=>`<button class="b" data-m="${x.m}" tabindex="-1" aria-label="${midiName(x.m)}" style="left:${x.left}%;width:${ww*.62}%"></button>`).join('')}</div>`;
+ $('#kbDn').onclick=()=>{prefs.kbOct=Math.max(1,oct-1);savePrefs();renderPop()};$('#kbUp').onclick=()=>{prefs.kbOct=Math.min(6,oct+1);savePrefs();renderPop()};
+ const kb=$('#kb');const keyAt=(x,y)=>{const el=document.elementFromPoint(x,y);return el&&el.closest?el.closest('#kb [data-m]'):null};
+ const press=(pid,el)=>{const prevEl=KB.down.get(pid);if(prevEl===el)return;if(prevEl){prevEl.classList.remove('dn');const v=KB.on.get(pid);v&&v.off();KB.on.delete(pid)}if(el){KB.down.set(pid,el);el.classList.add('dn');KB.on.set(pid,pianoNote(+el.dataset.m))}else KB.down.delete(pid)};
+ kb.onpointerdown=e=>{e.preventDefault();try{kb.setPointerCapture(e.pointerId)}catch(_){}press(e.pointerId,keyAt(e.clientX,e.clientY))};
+ kb.onpointermove=e=>{if(KB.down.has(e.pointerId))press(e.pointerId,keyAt(e.clientX,e.clientY))};
+ kb.onpointerup=kb.onpointercancel=e=>press(e.pointerId,null)}
+const KMAP='awsedftgyhujkolp;';
+addEventListener('keydown',e=>{if(V.pop!=='keys'||e.repeat||e.target.tagName==='INPUT'||!$('#modal').hidden)return;const i=KMAP.indexOf(e.key.toLowerCase());if(i<0)return;e.preventDefault();const m=12*(prefs.kbOct+1)+i,id='k'+e.key.toLowerCase();if(KB.on.has(id))return;KB.on.set(id,pianoNote(m));const el=$(`#kb [data-m="${m}"]`);el&&el.classList.add('dn')});
+addEventListener('keyup',e=>{const k=e.key.toLowerCase(),id='k'+k;if(!KB.on.has(id))return;const v=KB.on.get(id);v&&v.off();KB.on.delete(id);const el=$(`#kb [data-m="${12*(prefs.kbOct+1)+KMAP.indexOf(k)}"]`);el&&el.classList.remove('dn')});
+
+/* music player */
+const MU={audio:new Audio(),id:null,url:null,A:null,B:null,rate:1};
+MU.audio.addEventListener('timeupdate',()=>{if(MU.A!=null&&MU.B!=null&&MU.audio.currentTime>=MU.B)MU.audio.currentTime=MU.A;const t=$('#muT');t&&(t.textContent=`${fmtTime(MU.audio.currentTime)} / ${fmtTime(MU.audio.duration)}`);const s=$('#muSeek');if(s&&!s.matches(':active'))s.value=MU.audio.duration?MU.audio.currentTime/MU.audio.duration*1000:0});
+MU.audio.addEventListener('play',()=>{const p=$('#muPlay');p&&(p.innerHTML=ic('pause'))});MU.audio.addEventListener('pause',()=>{const p=$('#muPlay');p&&(p.innerHTML=icFill('play'))});
+async function pMusic(b){const sc=V.score;const recs=(await DB.all('recs')).filter(r=>r.scoreId===sc.id).sort((a,c)=>(a.kind==='ref'?0:1)-(c.kind==='ref'?0:1)||c.at-a.at);if(V.pop!=='music')return;
+ if(MU.id&&!recs.some(r=>r.id===MU.id)){MU.audio.pause();MU.id=null}const cur=recs.find(r=>r.id===MU.id);
+ b.innerHTML=`${cur?`<div class="grp"><b style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(cur.name)}</b><input type="range" id="muSeek" min="0" max="1000" value="0" aria-label="재생 위치"><div class="row" style="justify-content:space-between;flex-wrap:nowrap"><span id="muT" style="font-family:var(--f-mono);font-size:12px">0:00</span><div class="row" style="flex-wrap:nowrap"><button class="ib" id="muBack" aria-label="5초 뒤로">${ic('undo')}</button><button class="round" id="muPlay" style="background:var(--accent);color:var(--accent-ink);border:0" aria-label="재생/일시정지">${MU.audio.paused?icFill('play'):ic('pause')}</button><button class="ib" id="muFwd" aria-label="5초 앞으로">${ic('redo')}</button></div><span style="width:40px"></span></div>
+  <div class="rng"><span class="k">속도</span><input type="range" id="muRate" min="50" max="150" step="5" value="${MU.rate*100}" aria-label="재생 속도"><output id="muRo">${Math.round(MU.rate*100)}%</output></div>
+  <div class="row"><button class="btn sm ${MU.A!=null?'primary':''}" id="muA">A ${MU.A!=null?fmtTime(MU.A):'지점'}</button><button class="btn sm ${MU.B!=null?'primary':''}" id="muB">B ${MU.B!=null?fmtTime(MU.B):'지점'}</button><button class="btn sm" id="muAB">${ic('loop')}반복 해제</button></div><p class="hint">어려운 구간은 A·B를 찍어 반복하고, 속도를 줄여 연습하세요. 음 높이는 그대로예요.</p></div>`:''}
+ <div class="grp"><span class="lbl">이 곡의 음원 · 녹음</span><div class="lst">${recs.length?recs.map(r=>`<div class="li ${r.id===MU.id?'cur':''}"><button class="g" data-mu="${r.id}"><b>${esc(r.name)}</b><span>${r.kind==='ref'?'반주 · 참고 음원':'내 녹음 · '+fmtDate(r.at)}</span></button><button class="ib" data-mu="${r.id}" aria-label="재생">${icFill('play')}</button></div>`).join(''):'<p class="hint">원곡이나 반주(MR)를 불러오면 악보를 보면서 같이 들을 수 있어요.</p>'}</div></div>
+ <button class="btn" id="muImp">${ic('upload')}음원 파일 불러오기</button>`;
+ $('#muImp').onclick=()=>$('#audioIn').click();
+ $$('[data-mu]',b).forEach(x=>x.onclick=()=>{const r=recs.find(q=>q.id===x.dataset.mu);if(MU.id!==r.id){MU.url&&URL.revokeObjectURL(MU.url);MU.url=URL.createObjectURL(r.blob);MU.audio.src=MU.url;MU.id=r.id;MU.A=MU.B=null}MU.audio.playbackRate=MU.rate;MU.audio.preservesPitch=true;MU.audio.play().catch(()=>{});renderPop()});
+ if(cur){$('#muPlay').onclick=()=>MU.audio.paused?MU.audio.play().catch(()=>{}):MU.audio.pause();$('#muBack').onclick=()=>MU.audio.currentTime=Math.max(0,MU.audio.currentTime-5);$('#muFwd').onclick=()=>MU.audio.currentTime+=5;
+  $('#muSeek').oninput=e=>{if(MU.audio.duration)MU.audio.currentTime=e.target.value/1000*MU.audio.duration};
+  $('#muRate').oninput=e=>{MU.rate=e.target.value/100;MU.audio.playbackRate=MU.rate;$('#muRo').textContent=Math.round(MU.rate*100)+'%'};
+  $('#muA').onclick=()=>{MU.A=MU.audio.currentTime;if(MU.B!=null&&MU.B<=MU.A)MU.B=null;renderPop()};
+  $('#muB').onclick=()=>{if(MU.A==null){toast('A 지점을 먼저 찍어 주세요');return}const t=MU.audio.currentTime;if(t<=MU.A){toast('B는 A보다 뒤여야 해요');return}MU.B=t;MU.audio.currentTime=MU.A;renderPop()};
+  $('#muAB').onclick=()=>{MU.A=MU.B=null;renderPop()}}}
+async function importAudio(files){const f=files[0];if(!f||!V.score)return;await DB.put('recs',{id:uid(),scoreId:V.score.id,name:baseName(f.name),blob:f,at:Date.now(),kind:'ref'});toast('음원을 불러왔어요');if(V.pop==='music')renderPop();else openPop('music','l')}
+$('#audioIn').onchange=e=>{const fs=[...e.target.files];e.target.value='';importAudio(fs)};
+
+/* recorder */
+const R={mr:null,chunks:[],stream:null,t0:0,timer:0,err:'',raf:0};
+async function pRec(b){freeUrls('pop');const sc=V.score;const recs=(await DB.all('recs')).filter(r=>r.scoreId===sc.id&&r.kind==='rec').sort((a,c)=>c.at-a.at);if(V.pop!=='rec')return;
+ b.innerHTML=`<div class="grp" style="align-items:center"><button class="rec-btn ${R.mr?'on':''}" id="rBtn" aria-label="${R.mr?'녹음 정지':'녹음 시작'}"><i></i></button><div class="big" id="rTime" style="font-size:28px">${R.mr?fmtTime((Date.now()-R.t0)/1000):'0:00'}</div><div class="meter"><i id="rLvl"></i></div></div>
+ ${R.err?`<div class="notice">${R.err}</div>`:''}
+ <div class="grp"><span class="lbl">이 곡의 녹음</span><div class="lst">${recs.length?recs.map(r=>{const u=URL.createObjectURL(r.blob);urlBag.pop.push(u);return recItem(r,u)}).join(''):'<p class="hint">녹음하면 이 곡에 쌓여요. 지난 연습과 비교해 들어 보세요.</p>'}</div></div>`;
+ $('#rBtn').onclick=()=>R.mr?recStop():recStart();bindRecItems(b,recs,renderPop)}
+async function recStart(){R.err='';if(!window.MediaRecorder){R.err=micMsg();renderPop();return}try{R.stream=await getMic()}catch(e){R.err=micMsg(e);renderPop();return}
+ const types=['audio/webm;codecs=opus','audio/webm','audio/mp4'];const mime=types.find(t=>MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(t))||'';
+ try{R.mr=new MediaRecorder(R.stream,mime?{mimeType:mime}:undefined)}catch(e){R.err='녹음을 시작하지 못했어요.';R.stream.getTracks().forEach(t=>t.stop());renderPop();return}
+ R.chunks=[];R.mr.ondataavailable=e=>{if(e.data&&e.data.size)R.chunks.push(e.data)};const sid=V.score.id,title=V.score.title;
+ R.mr.onstop=async()=>{const type=R.mr.mimeType||mime||'audio/webm';const blob=new Blob(R.chunks,{type});const dur=(Date.now()-R.t0)/1000;R.stream.getTracks().forEach(t=>t.stop());cancelAnimationFrame(R.raf);clearInterval(R.timer);R.mr=null;
+  const d=new Date();await DB.put('recs',{id:uid(),scoreId:sid,name:`${title} ${d.getMonth()+1}월 ${d.getDate()}일 ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`,blob,dur,at:Date.now(),kind:'rec',ext:type.includes('mp4')?'mp4':'webm'});
+  toast(`녹음을 저장했어요 (${fmtTime(dur)})`);syncTools();if(V.pop==='rec')renderPop()};
+ R.mr.start(1000);R.t0=Date.now();
+ try{const c=actx();const src=c.createMediaStreamSource(R.stream);const an=c.createAnalyser();an.fftSize=512;src.connect(an);const buf=new Uint8Array(512);const lv=()=>{an.getByteTimeDomainData(buf);let m=0;for(const v of buf)m=Math.max(m,Math.abs(v-128));const el=$('#rLvl');el&&(el.style.width=Math.min(100,m/128*160)+'%');R.raf=requestAnimationFrame(lv)};lv()}catch(e){}
+ R.timer=setInterval(()=>{const el=$('#rTime');el&&(el.textContent=fmtTime((Date.now()-R.t0)/1000))},500);syncTools();renderPop()}
+function recStop(){if(R.mr&&R.mr.state!=='inactive')R.mr.stop()}
+
+/* auto turn */
+const AT={on:false,paused:false,acc:0,last:0,raf:0,pos:0};
+async function atStart(){if(!V.score||AT.on)return;const a=V.score.auto;if(a.mode==='scroll'&&mode()!=='scroll'){prefs.mode='scroll';savePrefs();await layout()}
+ AT.on=true;AT.paused=false;AT.acc=0;syncTools();
+ if(a.mode!=='scroll'&&a.countIn){await countIn(a.mode==='bpm'?a.bpm:metroCfg().bpm,a.mode==='bpm'?a.beats:metroCfg().beats);if(!AT.on)return}
+ AT.last=performance.now();AT.pos=stage.scrollTop;cancelAnimationFrame(AT.raf);AT.raf=requestAnimationFrame(atTick);toast(a.mode==='scroll'?'흘려 보기를 시작했어요':'자동 넘김을 시작했어요. 위쪽 ▶ 버튼으로 멈춰요',1800)}
+function atTick(now){if(!AT.on)return;const dt=Math.min(100,now-AT.last);AT.last=now;const a=V.score&&V.score.auto;if(!a){atStop();return}
+ if(!AT.paused){if(a.mode==='scroll'){if(Math.abs(AT.pos-stage.scrollTop)>3)AT.pos=stage.scrollTop;AT.pos+=a.speed*dt/1000;stage.scrollTop=AT.pos;$('#atBar').style.width=(stage.scrollTop/Math.max(1,stage.scrollHeight-stage.clientHeight)*100)+'%';
+   if(stage.scrollTop+stage.clientHeight>=stage.scrollHeight-2){if(!next(true)){atStop();toast('끝까지 흘렀어요');return}}}
+  else{const per=(a.mode==='bpm'?60/a.bpm*a.beats*a.bars:a.sec)*1000*step();AT.acc+=dt;$('#atBar').style.width=Math.min(100,AT.acc/per*100)+'%';
+   if(AT.acc>=per){AT.acc=0;if(!next(true)){atStop();toast('마지막 페이지라 자동 넘김을 멈췄어요');return}}}}
+ AT.raf=requestAnimationFrame(atTick)}
+function atPause(p){AT.paused=p;AT.last=performance.now();syncTools();if(V.pop==='auto')renderPop()}
+function atStop(){AT.on=false;AT.paused=false;cancelAnimationFrame(AT.raf);$('#atBar').style.width='0';syncTools();if(V.pop==='auto')renderPop()}
+
+/* files out / backup */
+const IOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const STANDALONE=!!(navigator.standalone||(window.matchMedia&&matchMedia('(display-mode: standalone)').matches));
+const IN_FRAME=window.self!==window.top;
+async function saveFile(name,blob){if(!IN_FRAME&&navigator.canShare){try{const f=new File([blob],name,{type:blob.type||'application/octet-stream'});if(navigator.canShare({files:[f]})){await navigator.share({files:[f],title:name});return}}catch(e){if(e&&e.name==='AbortError')return}}
+ try{const d=window.claude&&window.claude.use?await window.claude.use('downloads'):null;if(d){await d.save({filename:name,data:blob});toast('저장했어요');return}}catch(e){if(e&&e.code==='declined')return;if(e&&e.code&&!['unavailable','not_granted','capability_disabled'].includes(e.code)){toast('이 형식은 여기서 저장할 수 없어요');return}}
+ const a=document.createElement('a');const u=URL.createObjectURL(blob);a.href=u;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000)}
+const b2d=blob=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(blob)});
+function d2b(d){const [h,b]=d.split(',');const type=(h.match(/data:([^;]+)/)||[])[1]||'';const bin=atob(b);const u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return new Blob([u],{type})}
+async function exportBackup(){toast('백업 파일을 만드는 중…',6000);const blobs=[];for(const b of await DB.all('blobs'))blobs.push({id:b.id,name:b.name,type:b.type,data:await b2d(b.blob)});
+ const recs=[];for(const r of await DB.all('recs')){const {blob,...rest}=r;recs.push({...rest,data:await b2d(blob)})}
+ const data={app:'bomyeondae',v:2,at:Date.now(),scores:S.scores,folders:S.folders,setlists:S.setlists,ann:await DB.all('ann'),blobs,recs};const d=new Date();
+ saveFile(`보면대 백업 ${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}.json`,new Blob([JSON.stringify(data)],{type:'application/json'}))}
+$('#backupIn').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{const d=JSON.parse(await f.text());if(d.app!=='bomyeondae')throw 0;
+ for(const b of d.blobs||[])await DB.put('blobs',{id:b.id,name:b.name,type:b.type,blob:d2b(b.data)});for(const r of d.recs||[]){const {data,...rest}=r;await DB.put('recs',{...rest,blob:d2b(data)})}
+ for(const a of d.ann||[])await DB.put('ann',a);for(const s of d.scores||[]){s.tags=s.tags||[];s.cover=s.cover||{style:'color',color:COVERS[0]};await DB.put('scores',s)}for(const s of d.folders||[])await DB.put('folders',s);for(const s of d.setlists||[])await DB.put('setlists',s);
+ await loadAll();renderLib();renderTabs();toast(`악보 ${(d.scores||[]).length}개를 복원했어요`)}catch(err){toast('보면대 백업 파일이 아니에요')}};
+
+/* samples drawn on canvas */
+function rng(seed){return()=>{seed=(seed*1664525+1013904223)%4294967296;return seed/4294967296}}
+function drawClef(x,cx,top){x.save();x.lineWidth=2.4;x.beginPath();const s=10;x.moveTo(cx+4,top+s*6.2);x.bezierCurveTo(cx-6,top+s*6.4,cx-4,top+s*5,cx+3,top+s*5.2);x.moveTo(cx+4,top+s*6.2);
+ x.bezierCurveTo(cx+9,top+s*4,cx+2,top-s*.5,cx+6,top-s*1.4);x.bezierCurveTo(cx+14,top-s*.6,cx+12,top+s*1.4,cx-2,top+s*2.6);x.bezierCurveTo(cx-12,top+s*3.6,cx-8,top+s*5.2,cx+4,top+s*4.9);x.bezierCurveTo(cx+14,top+s*4.4,cx+12,top+s*2.7,cx+2,top+s*3);x.stroke();x.restore()}
+async function samplePage({title,sub,comp,tempo,page,total,seed,beats,secs}){const W=1000,H=1414;const c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');const r=rng(seed);
+ x.fillStyle='#fff';x.fillRect(0,0,W,H);x.fillStyle='#111';x.strokeStyle='#111';let y0=100;
+ if(page===1){x.textAlign='center';x.font='bold 42px "Gowun Batang",Georgia,serif';x.fillText(title,W/2,110);x.font='20px "Gowun Batang",Georgia,serif';x.fillText(sub,W/2,148);x.textAlign='right';x.font='18px "Gowun Batang",Georgia,serif';x.fillText(comp,930,190);x.textAlign='left';x.font='bold italic 18px Georgia,serif';x.fillText(tempo,70,215);y0=270}
+ const L=70,Rr=930,gap=page===1?120:126,n=page===1?9:10;let mno=(page-1)*40+(page===1?1:-3);
+ for(let sI=0;sI<n;sI++){const top=y0+sI*gap,bot=top+40;
+  const sec=secs&&secs.find(q=>q.page===page&&q.sys===sI);if(sec){x.font='bold 20px "Noto Sans KR",sans-serif';x.lineWidth=2;x.strokeRect(L,top-50,26,26);x.textAlign='center';x.fillText(sec.box,L+13,top-30);x.textAlign='left';x.fillText(sec.name,L+34,top-30)}
+  x.lineWidth=1.2;for(let k=0;k<5;k++){x.beginPath();x.moveTo(L,top+k*10);x.lineTo(Rr,top+k*10);x.stroke()}
+  x.lineWidth=1.5;x.beginPath();x.moveTo(L,top);x.lineTo(L,bot);x.stroke();drawClef(x,L+18,top);x.font='bold 20px Georgia,serif';x.fillText('♯',L+40,top+12);let sx=L+60;
+  if(page===1&&sI===0){x.font='bold 26px Georgia,serif';x.fillText(String(beats),L+62,top+19);x.fillText('4',L+62,top+39);sx=L+86}
+  x.font='italic 12px Georgia,serif';x.fillText(String(mno),L,top-8);const bars=4,bw=(Rr-sx)/bars;
+  for(let bI=0;bI<bars;bI++){const bx=sx+bI*bw,bx2=bx+bw;x.lineWidth=1.5;x.beginPath();x.moveTo(bx2,top);x.lineTo(bx2,bot);x.stroke();
+   if(r()<.12){x.font='bold italic 20px Georgia,serif';x.fillText(['p','mf','f','mp','cresc.'][Math.floor(r()*5)],bx+10,bot+32)}
+   const pats=beats===3?[[1,1,1],[2,1],[.5,.5,1,1],[3],[1,.5,.5,1]]:[[1,1,1,1],[2,2],[.5,.5,1,2],[1,1,2],[4],[.5,.5,.5,.5,1,1]];
+   const pat=pats[Math.floor(r()*pats.length)];let t=0,prevStem=null;
+   pat.forEach(d=>{const nx=bx+14+t/beats*(bw-24);t+=d;const pos=Math.floor(r()*11)-1;const ny=bot-pos*5;const up=pos<4;
+    x.save();x.translate(nx,ny);x.rotate(-.35);x.beginPath();x.ellipse(0,0,6.6,4.6,0,0,Math.PI*2);if(d>=2){x.lineWidth=1.8;x.stroke()}else x.fill();x.restore();
+    if(pos<=-1){x.beginPath();x.lineWidth=1.2;x.moveTo(nx-10,bot+10);x.lineTo(nx+10,bot+10);x.stroke()}
+    if(d<4){x.lineWidth=1.4;const sx2=up?nx+6:nx-6,sy2=up?ny-34:ny+34;x.beginPath();x.moveTo(sx2,ny);x.lineTo(sx2,sy2);x.stroke();
+     if(d===.5){if(prevStem){x.lineWidth=5;x.beginPath();x.moveTo(prevStem.x,prevStem.y);x.lineTo(sx2,prevStem.y);x.stroke();prevStem=null}else prevStem={x:sx2,y:sy2,up}}else prevStem=null}
+    if(d===3){x.beginPath();x.arc(nx+11,ny,2,0,7);x.fill()}});
+   if(prevStem){x.lineWidth=1.6;x.beginPath();x.moveTo(prevStem.x,prevStem.y);x.quadraticCurveTo(prevStem.x+8,prevStem.y+(prevStem.up?10:-10),prevStem.x+6,prevStem.y+(prevStem.up?20:-20));x.stroke()}mno++}
+  if(page===total&&sI===n-1){x.lineWidth=5;x.beginPath();x.moveTo(Rr-2,top);x.lineTo(Rr-2,bot);x.stroke()}}
+ x.textAlign='center';x.font='14px Georgia,serif';x.fillStyle='#444';x.fillText(`${page} / ${total}`,W/2,H-40);return await new Promise(res=>c.toBlob(res,'image/png'))}
+async function seedSamples(){const fd={id:uid(),name:'예시 악보',createdAt:Date.now()};await DB.put('folders',fd);S.folders.push(fd);
+ const defs=[{title:'작은 왈츠',sub:'피아노 독주를 위한',comp:'예시 악보 · 보면대',tempo:'Allegretto  ♩= 112',total:4,beats:3,seed:7,color:COVERS[0],tags:['피아노'],
+   auto:{mode:'bpm',sec:30,bpm:112,beats:3,bars:16,speed:30,countIn:true},metro:{bpm:112,beats:3},secs:[{page:1,sys:0,box:'A',name:'Theme',m:'Theme'},{page:2,sys:2,box:'B',name:'Trio',m:'Trio'},{page:4,sys:4,box:'C',name:'Coda',m:'Coda'}]},
+  {title:'연습곡 No.1',sub:'손가락 독립을 위한 연습',comp:'예시 악보 · 보면대',tempo:'Moderato  ♩= 92',total:2,beats:4,seed:42,color:COVERS[1],tags:['레슨'],
+   auto:{mode:'time',sec:45,bpm:92,beats:4,bars:10,speed:30,countIn:false},metro:{bpm:92,beats:4},secs:[{page:1,sys:0,box:'A',name:'도입',m:'도입'},{page:2,sys:2,box:'B',name:'반복',m:'반복'}]}];
+ const ids=[];
+ for(const d of defs){const pages=[];for(let p=1;p<=d.total;p++){const blob=await samplePage({...d,page:p,seed:d.seed+p*13});const b=uid();await DB.put('blobs',{id:b,blob,type:'image/png',name:`${d.title}-${p}.png`});pages.push({id:uid(),src:{k:'img',b},rot:0,crop:[0,0,0,0]})}
+  const sc=newScore({title:d.title,composer:'예시',folderId:fd.id,tags:d.tags,pages,sample:true,auto:d.auto,metro:d.metro,cover:{style:'color',color:d.color},note:'보면대에서 그린 예시 악보예요. 자유롭게 지워도 됩니다.',
+   sections:d.secs.map(q=>({id:uid(),name:q.m,page:pages[q.page-1].id})),createdAt:Date.now()-ids.length*1000,lastOpened:Date.now()-ids.length*1000});
+  await makeThumb(sc);await saveScore(sc);S.scores.push(sc);ids.push(sc.id);
+  if(d.seed===7)await DB.put('ann',{id:sc.id,pages:{[pages[0].id]:[{t:'pen',c:'#d12f2f',w:.0024,p:circlePts(.62,.27,.07,.03)},{t:'txt',c:'#d12f2f',s:.03,x:.76,y:.24,v:'mf'},{t:'hl',c:'#f2c200',w:.012,p:[.15,.36,.45,.36]},{t:'txt',c:'#1f5fd1',s:.026,x:.33,y:.335,v:'2'},{t:'txt',c:'#1f5fd1',s:.026,x:.37,y:.335,v:'4'},{t:'txt',c:'#1a1a1a',s:.03,x:.9,y:.5,v:'V'}]}})}
+ const sl={id:uid(),name:'예시 곡목록',items:ids,createdAt:Date.now()};await DB.put('setlists',sl);S.setlists.push(sl);return ids}
+function circlePts(cx,cy,rx,ry){const p=[];for(let a=0;a<=Math.PI*2.1;a+=.2)p.push(+(cx+Math.cos(a)*rx).toFixed(4),+(cy+Math.sin(a)*ry).toFixed(4));return p}
+
+/* pinch zoom (Safari gesture events + two-pointer fallback) */
+let pz=null;
+function pinchStart(){if(V.draw||!V.score)return;pz={base:V.zoom,s:1}}
+function pinchMove(scale){if(!pz)return;pz.s=clamp(pz.base*scale,.5,3)/pz.base;spread.style.transform=`scale(${pz.s})`}
+function pinchEnd(){if(!pz)return;const z=clamp(pz.base*pz.s,.5,3);pz=null;spread.style.transform='';if(Math.abs(z-V.zoom)>.02){V.zoom=Math.abs(z-1)<.08?1:z;layout();toast(`확대 ${Math.round(V.zoom*100)}%`,900)}}
+stage.addEventListener('gesturestart',e=>{e.preventDefault();pinchStart()});
+stage.addEventListener('gesturechange',e=>{e.preventDefault();pinchMove(e.scale)});
+stage.addEventListener('gestureend',e=>{e.preventDefault();pinchEnd()});
+const tp=new Map();let tp0=0;
+stage.addEventListener('touchstart',e=>{if(e.touches.length===2&&!('ongesturestart' in window)){const[a,b]=e.touches;tp0=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);pinchStart()}},{passive:true});
+stage.addEventListener('touchmove',e=>{if(e.touches.length===2&&tp0&&pz){e.preventDefault();const[a,b]=e.touches;pinchMove(Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY)/tp0)}},{passive:false});
+stage.addEventListener('touchend',e=>{if(tp0&&e.touches.length<2){tp0=0;pinchEnd()}});
+/* install guide */
+function maybeInstallHint(){const hasManifest=!!document.querySelector('link[rel="manifest"]');if(!hasManifest||IN_FRAME||STANDALONE||!IOS||LS.get('installHidden',false))return;$('#install').hidden=false}
+$('#installX').onclick=()=>{$('#install').hidden=true;LS.set('installHidden',true)};
+try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
+/* boot */
+async function loadAll(){S.scores=await DB.all('scores');S.scores.forEach(s=>{s.tags=s.tags||[];s.cover=s.cover||{style:'color',color:COVERS[0]}});S.folders=(await DB.all('folders')).sort((a,b)=>a.createdAt-b.createdAt);S.setlists=(await DB.all('setlists')).sort((a,b)=>a.createdAt-b.createdAt);
+ if(L.filter.kind==='folder'&&!S.folders.some(f=>f.id===L.filter.id))L.filter={kind:'all',id:null}}
+$('#fileIn').onchange=e=>{const f=[...e.target.files];e.target.value='';startImport(f)};
+let dragN=0;const dz=document.createElement('div');dz.className='dropzone';dz.textContent='놓으면 악보로 올려요';dz.hidden=true;document.body.append(dz);
+addEventListener('dragenter',e=>{if(e.dataTransfer&&[...e.dataTransfer.types].includes('Files')){dragN++;dz.hidden=false}});
+addEventListener('dragleave',()=>{if(--dragN<=0){dragN=0;dz.hidden=true}});addEventListener('dragover',e=>e.preventDefault());
+addEventListener('drop',e=>{e.preventDefault();dragN=0;dz.hidden=true;const fs=[...e.dataTransfer.files];if(!fs.length)return;if(V.score&&fs.every(f=>f.type.startsWith('audio/'))){importAudio(fs);return}startImport(fs)});
+document.addEventListener('paste',e=>{if(!$('#modal').hidden)return;const fs=[...(e.clipboardData?.files||[])];if(fs.length)startImport(fs)});
+(async()=>{renderPills();syncTools();maybeInstallHint();await DB.open();await loadAll();
+ if(!S.scores.length&&(!DB.db||!LS.get('seeded',false))){try{await document.fonts.load('bold 42px "Gowun Batang"')}catch(e){}const ids=await seedSamples();LS.set('seeded',true);prefs.tabs=ids.slice();prefs.active=ids[0];savePrefs()}
+ prefs.tabs=prefs.tabs.filter(id=>scoreById(id));const first=scoreById(prefs.active)?prefs.active:prefs.tabs[0];
+ if(first)await openScore(first);else{renderTabs();await layout();updateNav()}})();
+</script>
+
+<script>
+if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1')){
+ addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').then(reg=>{reg.addEventListener('updatefound',()=>{const w=reg.installing;w&&w.addEventListener('statechange',()=>{if(w.state==='installed'&&navigator.serviceWorker.controller&&typeof toast==='function')toast('새 버전을 받았어요. 앱을 다시 열면 적용돼요.',4000)})})}).catch(()=>{})})}
+</script>
+</body>
+</html>
