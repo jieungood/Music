@@ -1,4 +1,4 @@
-const V='bomyeondae-128684',FONTS='bmd-fonts';
+const V='bomyeondae-135411',FONTS='bmd-fonts';
 const CORE=['./','index.html','manifest.webmanifest','lib/pdf.min.js','lib/pdf.worker.min.js','icons/icon-180.png','icons/icon-192.png','icons/icon-512.png','icons/icon-maskable-512.png'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(V).then(c=>c.addAll(CORE)).then(()=>self.skipWaiting()))});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==V&&k!==FONTS).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});

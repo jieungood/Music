@@ -218,8 +218,28 @@ audio{width:100%;height:36px}
 .stamps .tx{width:120px;height:32px}
 
 /* library */
+.fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:10px;margin:0 0 8px}
+.fd-wrap{position:relative;min-width:0}
+.fd{width:100%;min-height:66px;display:flex;align-items:center;gap:12px;padding:10px 40px 10px 12px;border-radius:14px;border:1px solid var(--line);background:var(--raise);text-align:left;box-sizing:border-box;transition:border-color .15s,transform .15s}
+.fd:hover{border-color:var(--muted)}.fd:active{transform:scale(.98)}
+.fd.smart{background:transparent;border-style:dashed;padding-right:12px}
+.fd-ico{width:38px;height:30px;flex:none;color:var(--fc)}
+.fd-ico svg{width:100%;height:100%;display:block}
+.fd-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.fd-txt b{font-weight:500;font-size:14px;line-height:1.3;word-break:keep-all;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.fd-txt small{color:var(--muted);font-size:12px;font-family:var(--f-mono)}
+.fd-more{position:absolute;right:4px;top:50%;transform:translateY(-50%)}
+.fhead{display:flex;align-items:center;gap:12px;margin:4px 4px 2px}
+.fhead .fd-ico{width:46px;height:36px}
+.fhead h3{flex:1;min-width:0;margin:0;font-family:var(--f-display);font-size:24px;line-height:1.25;word-break:keep-all;overflow-wrap:anywhere}
+.pick-list{max-height:min(50vh,420px);overflow:auto;display:flex;flex-direction:column;gap:2px;margin:0 -6px}
+.pick-list label{display:flex;align-items:center;gap:10px;padding:9px 8px;border-radius:10px;cursor:pointer}
+.pick-list label:hover{background:rgba(127,127,127,.1)}
+.pick-list input{accent-color:var(--accent);width:18px;height:18px;flex:none}
+.pick-list b{flex:1;min-width:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pick-list small{color:var(--muted);font-size:12px;white-space:nowrap;flex:none}
 #scrim{position:fixed;inset:0;z-index:19;background:rgba(0,0,0,.08)}
-#lib{position:fixed;z-index:20;top:calc(10px + var(--st));bottom:calc(10px + var(--sb));left:calc(10px + var(--sl));width:min(480px,calc(100% - 20px));border-radius:28px;display:flex;flex-direction:column;overflow:hidden;background:var(--glass-2)}
+#lib{position:fixed;z-index:20;top:calc(10px + var(--st));bottom:calc(10px + var(--sb));left:calc(10px + var(--sl));width:min(540px,calc(100% - 20px));border-radius:28px;display:flex;flex-direction:column;overflow:hidden;background:var(--glass-2)}
 .lib-head{display:flex;align-items:center;gap:6px;padding:14px 14px 6px}
 .lib-head .seg{flex:1;max-width:300px;margin:0 auto;border-radius:20px}
 .lib-head .seg button{height:34px;border-radius:17px}
@@ -458,52 +478,80 @@ function coverHTML(s){const c=s.cover||{style:'color',color:COVERS[0]};
  return c.style==='page'&&s.thumb?`<div class="book page" style="--c:#fff"><img src="${s.thumb}" alt=""></div>`:`<div class="book" style="--c:${c.color}"><i class="spine"></i><div class="label">${esc(s.title)}${s.composer?`<span>${esc(s.composer)}</span>`:''}</div>${clefSVG}</div>`}
 function bookHTML(s,sel){return `<div class="bk ${L.picked.has(s.id)?'picked':''}"><div class="ttl">${esc(s.title)}</div><div class="cover-wrap"><button class="cv" data-open="${s.id}" aria-label="${esc(s.title)} 열기">${coverHTML(s)}</button>
   ${s.fav?`<span class="favm">${ic('star')}</span>`:''}${sel?`<span class="sel">${L.picked.has(s.id)?ic('check'):''}</span>`:`<button class="inf" data-info="${s.id}" aria-label="${esc(s.title)} 정보">i</button>`}</div></div>`}
-function filterLabel(){const f=L.filter;if(f.kind==='fav')return '즐겨찾기';if(f.kind==='folder')return (S.folders.find(x=>x.id===f.id)||{}).name||'폴더';if(f.kind==='tag')return '#'+f.id;return '태그 · 폴더'}
-function filtered(){const f=L.filter;let list=S.scores.slice();if(f.kind==='fav')list=list.filter(s=>s.fav);else if(f.kind==='folder')list=list.filter(s=>s.folderId===f.id);else if(f.kind==='tag')list=list.filter(s=>(s.tags||[]).includes(f.id));
+function filterLabel(){const f=L.filter;if(f.kind==='fav')return '즐겨찾기';if(f.kind==='none')return '폴더 없는 악보';if(f.kind==='folder')return (S.folders.find(x=>x.id===f.id)||{}).name||'폴더';if(f.kind==='tag')return '#'+f.id;return '모든 악보'}
+const inFolder=s=>s.folderId&&S.folders.some(f=>f.id===s.folderId);
+function filtered(){const f=L.filter;let list=S.scores.slice();if(f.kind==='fav')list=list.filter(s=>s.fav);else if(f.kind==='none')list=list.filter(s=>!inFolder(s));else if(f.kind==='folder')list=list.filter(s=>s.folderId===f.id);else if(f.kind==='tag')list=list.filter(s=>(s.tags||[]).includes(f.id));
  const q=L.q.trim().toLowerCase();if(q)list=list.filter(s=>(s.title+' '+s.composer+' '+(s.tags||[]).join(' ')+' '+(s.note||'')).toLowerCase().includes(q));
  list.sort(L.sort==='title'?(a,b)=>a.title.localeCompare(b.title,'ko'):L.sort==='added'?(a,b)=>b.createdAt-a.createdAt:(a,b)=>(b.lastOpened||b.createdAt)-(a.lastOpened||a.createdAt));return list}
+const FOLDER_SVG=`<svg viewBox="0 0 40 32" aria-hidden="true"><path d="M2 6a3 3 0 0 1 3-3h10l4 4h16a3 3 0 0 1 3 3v17a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3z" fill="currentColor"/><path d="M2.5 12h35" stroke="rgba(255,255,255,.4)" stroke-width="1.6"/></svg>`;
+const STAR_SVG=`<svg viewBox="0 0 40 32" aria-hidden="true"><path d="M20 3l4.6 9.4 10.4 1.5-7.5 7.3 1.8 10.3L20 26.6l-9.3 4.9 1.8-10.3L5 13.9l10.4-1.5z" fill="currentColor"/></svg>`;
+const folderColor=fd=>fd.color||COVERS[(S.folders.indexOf(fd)+1)%COVERS.length];
+function folderTile(kind,id,name,count,color,icon,more){return `<div class="fd-wrap"><button class="fd ${kind!=='folder'?'smart':''}" data-fk="${kind}" data-fid="${esc(id||'')}" style="--fc:${color}"><span class="fd-ico">${icon}</span><span class="fd-txt"><b>${esc(name)}</b><small>${count}곡</small></span></button>${more?`<button class="ib fd-more" data-fm="${id}" aria-label="${esc(name)} 폴더 메뉴">${ic('more','style="stroke-width:3"')}</button>`:''}</div>`}
+function sortSel(){return `<select class="tx" id="lbSort" style="width:auto;height:30px;font-size:12px" aria-label="정렬"><option value="recent" ${L.sort==='recent'?'selected':''}>최근 연 순</option><option value="added" ${L.sort==='added'?'selected':''}>추가한 순</option><option value="title" ${L.sort==='title'?'selected':''}>제목순</option></select>`}
 function renderLib(){if(!L.open)return;const el=$('#lib');
  const head=`<div class="lib-head"><button class="ib" id="lbSet" aria-label="서재 설정">${ic('gear')}</button><div class="seg"><button data-lt="all" class="${L.tab==='all'?'on':''}">모든 악보</button><button data-lt="sets" class="${L.tab==='sets'?'on':''}">곡목록</button><button data-lt="recs" class="${L.tab==='recs'?'on':''}">녹음</button></div><button class="ib" id="lbClose" aria-label="닫기">${ic('x')}</button></div>`;
  let body='';
- if(L.tab==='all'){const list=filtered();const plain=L.filter.kind==='all'&&!L.q;const recent=S.scores.filter(s=>s.lastOpened).sort((a,b)=>b.lastOpened-a.lastOpened).slice(0,10);
-  body=`<div class="lib-bar"><button class="filter" id="lbFilter">${ic('tag')}<span>${esc(filterLabel())}</span></button><span class="grow"></span><button class="ib" id="lbSearch" aria-label="검색">${ic('search')}</button><button class="txt ${L.selecting?'on':''}" id="lbSel">${L.selecting?'완료':'선택'}</button><button class="ib" id="lbMore" aria-label="더보기">${ic('more','style="stroke-width:3"')}</button></div>
-  ${L.searching?`<label class="lib-search">${ic('search')}<input id="lbQ" type="search" placeholder="제목, 가수, 태그 검색" value="${esc(L.q)}"></label>`:''}
-  <div class="lib-body">
-  ${plain&&recent.length&&!L.selecting?`<div class="lib-sec"><h4>최근의 (${recent.length})</h4></div><div class="shelf">${recent.map(s=>bookHTML(s)).join('')}</div>`:''}
-  <div class="lib-sec"><h4>${plain?'전체':esc(filterLabel())} (${list.length})</h4><span class="grow"></span><select class="tx" id="lbSort" style="width:auto;height:30px;font-size:12px" aria-label="정렬"><option value="recent" ${L.sort==='recent'?'selected':''}>최근 연 순</option><option value="added" ${L.sort==='added'?'selected':''}>추가한 순</option><option value="title" ${L.sort==='title'?'selected':''}>제목순</option></select></div>
-  <div class="shelf">${!L.selecting?`<div class="bk add-tile"><div class="ttl">악보 추가</div><button class="cv" id="lbAdd" aria-label="악보 추가"><div class="book">${ic('plus')}</div></button></div>`:''}${list.map(s=>bookHTML(s,L.selecting)).join('')}
-  ${!list.length&&!plain?`<div class="empty"><b>찾는 악보가 없어요</b>다른 단어나 태그로 찾아보세요.</div>`:''}</div>
-  ${plain&&S.scores.some(s=>s.sample)?`<p class="hint" style="margin-top:18px">예시 악보는 둘러보기용이에요. 정보(i)에서 지울 수 있어요. 이미지나 PDF를 화면에 끌어다 놓아도 올라가요.</p>`:''}</div>
-  ${L.selecting?`<div class="selbar"><button class="btn sm" id="sbFolder" ${L.picked.size?'':'disabled'}>${ic('folder')}폴더</button><button class="btn sm" id="sbTag" ${L.picked.size?'':'disabled'}>${ic('tag')}태그</button><button class="btn sm" id="sbSet" ${L.picked.size?'':'disabled'}>${ic('list')}곡목록</button><button class="btn sm danger" id="sbDel" ${L.picked.size?'':'disabled'}>${ic('trash')}삭제</button></div>`:''}`}
+ if(L.tab==='all'){const f=L.filter;const root=f.kind==='all';const list=filtered();const searching=!!L.q.trim();
+  const fd=f.kind==='folder'&&S.folders.find(x=>x.id===f.id);
+  body=`<div class="lib-bar">${root?`<span class="lbl" style="padding-left:8px">악보 ${S.scores.length}곡 · 폴더 ${S.folders.length}개</span>`:`<button class="filter" id="lbUp">${ic('back')}<span>모든 악보</span></button>`}<span class="grow"></span><button class="ib" id="lbSearch" aria-label="검색">${ic('search')}</button><button class="txt ${L.selecting?'on':''}" id="lbSel">${L.selecting?'완료':'선택'}</button><button class="ib" id="lbMore" aria-label="더보기">${ic('more','style="stroke-width:3"')}</button></div>
+  ${L.searching?`<label class="lib-search">${ic('search')}<input id="lbQ" type="search" placeholder="${root?'모든 악보에서':esc(filterLabel())+'에서'} 제목, 가수, 태그 검색" value="${esc(L.q)}"></label>`:''}
+  <div class="lib-body">`;
+  if(root&&!searching&&!L.selecting){const tags=[...new Set(S.scores.flatMap(s=>s.tags||[]))].sort((a,b)=>a.localeCompare(b,'ko'));const recent=S.scores.filter(s=>s.lastOpened).sort((a,b)=>b.lastOpened-a.lastOpened).slice(0,8);const none=S.scores.filter(s=>!inFolder(s)).length,favs=S.scores.filter(s=>s.fav).length;
+   body+=`<div class="lib-sec"><h4>폴더</h4><span class="grow"></span><button class="btn sm" id="lbNewF">${ic('plus')}새 폴더</button></div>
+   <div class="fgrid">${S.folders.map(x=>folderTile('folder',x.id,x.name,S.scores.filter(s=>s.folderId===x.id).length,folderColor(x),FOLDER_SVG,true)).join('')}
+   ${favs?folderTile('fav','','즐겨찾기',favs,'#e0a92a',STAR_SVG):''}${S.folders.length&&none?folderTile('none','','폴더 없는 악보',none,'var(--muted)',FOLDER_SVG):''}</div>
+   ${!S.folders.length?`<p class="hint" style="margin:-2px 4px 8px">폴더를 만들어 가요, 팝송, 레슨처럼 나눠 보세요.</p>`:''}
+   ${tags.length?`<div class="lib-sec"><h4>태그</h4></div><div class="chips" style="margin:0 4px 6px">${tags.map(t=>`<button class="chip" data-tag="${esc(t)}">#${esc(t)}</button>`).join('')}</div>`:''}
+   ${recent.length?`<div class="lib-sec"><h4>최근의 (${recent.length})</h4></div><div class="shelf">${recent.map(s=>bookHTML(s)).join('')}</div>`:''}
+   <div class="lib-sec"><h4>전체 (${list.length})</h4><span class="grow"></span>${sortSel()}</div>`}
+  else if(!root){const icon=f.kind==='fav'?STAR_SVG:f.kind==='tag'?'':FOLDER_SVG;const color=fd?folderColor(fd):f.kind==='fav'?'#e0a92a':'var(--muted)';
+   body+=`<div class="fhead" style="--fc:${color}">${icon?`<span class="fd-ico">${icon}</span>`:''}<h3>${esc(filterLabel())}</h3>${fd?`<button class="ib" data-fm="${fd.id}" aria-label="폴더 메뉴">${ic('more','style="stroke-width:3"')}</button>`:''}</div>
+   <div class="lib-sec"><h4>${searching?'검색 결과':'악보'} (${list.length})</h4><span class="grow"></span>${fd&&!L.selecting?`<button class="btn sm" id="lbPick">${ic('plus')}악보 넣기</button>`:''}${sortSel()}</div>`}
+  else body+=`<div class="lib-sec"><h4>${L.selecting?'선택할 악보를 누르세요':'검색 결과'} (${list.length})</h4><span class="grow"></span>${sortSel()}</div>`;
+  const addTile=!L.selecting&&!searching&&(root||fd)?`<div class="bk add-tile"><div class="ttl">${fd?'이 폴더에 올리기':'악보 추가'}</div><button class="cv" id="lbAdd" aria-label="악보 추가"><div class="book">${ic('plus')}</div></button></div>`:'';
+  body+=`<div class="shelf">${addTile}${list.map(s=>bookHTML(s,L.selecting)).join('')}
+  ${!list.length?`<div class="empty"><b>${searching?'찾는 악보가 없어요':fd?'폴더가 비어 있어요':'악보가 없어요'}</b>${searching?'다른 단어로 찾아보세요.':fd?"'악보 넣기'로 서재의 악보를 골라 넣거나, 새 악보를 이 폴더에 올리세요.":''}</div>`:''}</div>
+  ${root&&!searching&&S.scores.some(s=>s.sample)?`<p class="hint" style="margin-top:18px">예시 악보는 둘러보기용이에요. 정보(i)에서 지울 수 있어요.</p>`:''}</div>
+  ${L.selecting?`<div class="selbar"><button class="btn sm" id="sbAll">${L.picked.size===list.length&&list.length?'선택 해제':'모두 선택'}</button><button class="btn sm" id="sbFolder" ${L.picked.size?'':'disabled'}>${ic('folder')}폴더로 (${L.picked.size})</button><button class="btn sm" id="sbTag" ${L.picked.size?'':'disabled'}>${ic('tag')}태그</button><button class="btn sm" id="sbSet" ${L.picked.size?'':'disabled'}>${ic('list')}곡목록</button><button class="btn sm danger" id="sbDel" ${L.picked.size?'':'disabled'}>${ic('trash')}삭제</button></div>`:''}`}
  else if(L.tab==='sets')body=setsHTML();
  else body=`<div class="lib-body" id="recsBody"><p class="hint" style="margin-top:8px">불러오는 중…</p></div>`;
- el.innerHTML=head+body;bindLib(el)}
+ const keepScroll=$('.lib-body',el)?$('.lib-body',el).scrollTop:0;el.innerHTML=head+body;if(L.keepScroll&&$('.lib-body',el))$('.lib-body',el).scrollTop=keepScroll;L.keepScroll=false;bindLib(el)}
+function goFilter(kind,id){L.filter={kind,id:id||null};L.q='';L.searching=false;L.selecting=false;L.picked.clear();renderLib();const b=$('#lib .lib-body');b&&(b.scrollTop=0)}
 function bindLib(el){$('#lbClose').onclick=closeLib;$$('[data-lt]',el).forEach(b=>b.onclick=()=>{L.tab=b.dataset.lt;L.set=null;L.selecting=false;L.picked.clear();renderLib()});
  $('#lbSet').onclick=libSettings;
- $$('[data-open]',el).forEach(b=>b.onclick=()=>{const id=b.dataset.open;if(L.selecting){L.picked.has(id)?L.picked.delete(id):L.picked.add(id);renderLib();return}closeLib();openScore(id)});
+ $$('[data-open]',el).forEach(b=>b.onclick=()=>{const id=b.dataset.open;if(L.selecting){L.picked.has(id)?L.picked.delete(id):L.picked.add(id);L.keepScroll=true;renderLib();return}closeLib();openScore(id)});
  $$('[data-info]',el).forEach(b=>b.onclick=()=>infoDialog(scoreById(b.dataset.info)));
- if(L.tab==='all'){$('#lbFilter').onclick=filterMenu;$('#lbSearch').onclick=()=>{L.searching=!L.searching;if(!L.searching)L.q='';renderLib();$('#lbQ')&&$('#lbQ').focus()};
-  $('#lbQ')&&($('#lbQ').oninput=e=>{L.q=e.target.value;const pos=e.target.selectionStart;renderLib();const q=$('#lbQ');q.focus();q.setSelectionRange(pos,pos)});
-  $('#lbSel').onclick=()=>{L.selecting=!L.selecting;L.picked.clear();renderLib()};$('#lbMore').onclick=libSettings;
-  $('#lbSort').onchange=e=>{L.sort=e.target.value;LS.set('sort',L.sort);renderLib()};$('#lbAdd')&&($('#lbAdd').onclick=()=>$('#fileIn').click());
-  if(L.selecting){const ids=()=>[...L.picked].map(scoreById).filter(Boolean);
-   $('#sbFolder').onclick=()=>menu('폴더로 옮기기',[{label:'폴더 없음',icon:'folder',run:()=>bulk(s=>s.folderId=null)},...S.folders.map(f=>({label:f.name,icon:'folder',run:()=>bulk(s=>s.folderId=f.id)})),{label:'새 폴더 만들기',icon:'plus',run:()=>addFolder(f=>bulk(s=>s.folderId=f.id))}]);
-   $('#sbTag').onclick=()=>promptDlg('태그 붙이기','붙일 태그 (쉼표로 구분)','',v=>bulk(s=>s.tags=[...new Set([...(s.tags||[]),...parseTags(v)])]));
-   $('#sbSet').onclick=()=>pickSet(sl=>{ids().forEach(s=>{if(!sl.items.includes(s.id))sl.items.push(s.id)});DB.put('setlists',sl);toast(`"${sl.name}"에 ${L.picked.size}곡을 넣었어요`);L.selecting=false;L.picked.clear();renderLib()});
-   $('#sbDel').onclick=()=>confirmDlg('악보 삭제',`${L.picked.size}개 악보와 필기, 녹음을 모두 지울까요? 되돌릴 수 없어요.`,'삭제',async()=>{for(const s of ids())await deleteScore(s,true);L.selecting=false;L.picked.clear();renderLib();toast('지웠어요')})}}
- if(L.tab==='sets')bindSets(el);if(L.tab==='recs')renderRecsTab()}
-async function bulk(fn){for(const id of L.picked){const s=scoreById(id);if(s){fn(s);await saveScore(s)}}L.selecting=false;L.picked.clear();renderLib();renderTabs();toast('바꿨어요')}
-function filterMenu(){const tags=[...new Set(S.scores.flatMap(s=>s.tags||[]))].sort((a,b)=>a.localeCompare(b,'ko'));const f=L.filter;
- const m=dialog({title:'태그 · 폴더',body:`<div class="menu-list"><button data-k="all" class="${f.kind==='all'?'on':''}">${ic('stack')}모든 악보<em>${S.scores.length}</em></button><button data-k="fav" class="${f.kind==='fav'?'on':''}">${ic('star')}즐겨찾기<em>${S.scores.filter(s=>s.fav).length}</em></button></div>
-  <span class="lbl">폴더</span><div class="menu-list">${S.folders.map(x=>`<div class="row" style="gap:0;flex-wrap:nowrap"><button data-k="folder" data-id="${x.id}" class="${f.kind==='folder'&&f.id===x.id?'on':''}">${ic('folder')}${esc(x.name)}<em>${S.scores.filter(s=>s.folderId===x.id).length}</em></button><button class="ib" data-fm="${x.id}" aria-label="폴더 메뉴">${ic('more','style="stroke-width:3"')}</button></div>`).join('')}<button data-newf>${ic('plus')}새 폴더</button></div>
-  <span class="lbl">태그</span>${tags.length?`<div class="chips">${tags.map(t=>`<button class="chip ${f.kind==='tag'&&f.id===t?'on':''}" data-k="tag" data-id="${esc(t)}">#${esc(t)}</button>`).join('')}</div>`:'<p class="hint">악보 정보(i)에서 태그를 붙이면 여기서 모아 볼 수 있어요.</p>'}`,buttons:[{label:'닫기'}]});
- $$('[data-k]',m).forEach(b=>b.onclick=()=>{closeDialog();L.filter={kind:b.dataset.k,id:b.dataset.id||null};renderLib()});
- $('[data-newf]',m).onclick=()=>{closeDialog();addFolder(fd=>{L.filter={kind:'folder',id:fd.id};renderLib()})};
- $$('[data-fm]',m).forEach(b=>b.onclick=()=>{closeDialog();folderMenu(b.dataset.fm)})}
-function addFolder(cb){promptDlg('새 폴더','폴더 이름','',async v=>{const fd={id:uid(),name:v,createdAt:Date.now()};S.folders.push(fd);await DB.put('folders',fd);renderLib();cb&&cb(fd)})}
+ if(L.tab!=='all'){if(L.tab==='sets')bindSets(el);if(L.tab==='recs')renderRecsTab();return}
+ $$('[data-fk]',el).forEach(b=>b.onclick=()=>goFilter(b.dataset.fk,b.dataset.fid));
+ $$('[data-fm]',el).forEach(b=>b.onclick=e=>{e.stopPropagation();folderMenu(b.dataset.fm)});
+ $$('[data-tag]',el).forEach(b=>b.onclick=()=>goFilter('tag',b.dataset.tag));
+ $('#lbUp')&&($('#lbUp').onclick=()=>goFilter('all'));
+ $('#lbNewF')&&($('#lbNewF').onclick=()=>addFolder());
+ $('#lbPick')&&($('#lbPick').onclick=()=>pickIntoFolder(L.filter.id));
+ $('#lbSearch').onclick=()=>{L.searching=!L.searching;if(!L.searching)L.q='';renderLib();$('#lbQ')&&$('#lbQ').focus()};
+ $('#lbQ')&&($('#lbQ').oninput=e=>{L.q=e.target.value;const pos=e.target.selectionStart;renderLib();const q=$('#lbQ');q.focus();q.setSelectionRange(pos,pos)});
+ $('#lbSel').onclick=()=>{L.selecting=!L.selecting;L.picked.clear();renderLib()};$('#lbMore').onclick=libSettings;
+ $('#lbSort')&&($('#lbSort').onchange=e=>{L.sort=e.target.value;LS.set('sort',L.sort);renderLib()});$('#lbAdd')&&($('#lbAdd').onclick=()=>$('#fileIn').click());
+ if(L.selecting){const ids=()=>[...L.picked].map(scoreById).filter(Boolean);
+  $('#sbAll').onclick=()=>{const list=filtered();if(L.picked.size===list.length)L.picked.clear();else list.forEach(s=>L.picked.add(s.id));L.keepScroll=true;renderLib()};
+  $('#sbFolder').onclick=()=>menu('어느 폴더로 옮길까요?',[...S.folders.map(f=>({label:f.name,icon:'folder',run:()=>bulk(s=>s.folderId=f.id,`"${f.name}"로 옮겼어요`)})),{label:'새 폴더 만들어 옮기기',icon:'plus',run:()=>addFolder(f=>bulk(s=>s.folderId=f.id,`"${f.name}"로 옮겼어요`),true)},{label:'폴더에서 빼기',icon:'x',run:()=>bulk(s=>s.folderId=null,'폴더에서 뺐어요')}]);
+  $('#sbTag').onclick=()=>promptDlg('태그 붙이기','붙일 태그 (쉼표로 구분)','',v=>bulk(s=>s.tags=[...new Set([...(s.tags||[]),...parseTags(v)])]));
+  $('#sbSet').onclick=()=>pickSet(sl=>{ids().forEach(s=>{if(!sl.items.includes(s.id))sl.items.push(s.id)});DB.put('setlists',sl);toast(`"${sl.name}"에 ${L.picked.size}곡을 넣었어요`);L.selecting=false;L.picked.clear();renderLib()});
+  $('#sbDel').onclick=()=>confirmDlg('악보 삭제',`${L.picked.size}개 악보와 필기, 녹음을 모두 지울까요? 되돌릴 수 없어요.`,'삭제',async()=>{for(const s of ids())await deleteScore(s,true);L.selecting=false;L.picked.clear();renderLib();toast('지웠어요')})}}
+async function bulk(fn,msg){const n=L.picked.size;for(const id of L.picked){const s=scoreById(id);if(s){fn(s);await saveScore(s)}}L.selecting=false;L.picked.clear();renderLib();renderTabs();toast(msg?`${n}곡을 ${msg}`:'바꿨어요')}
+function pickIntoFolder(fid){const fd=S.folders.find(f=>f.id===fid);if(!fd)return;const cand=S.scores.filter(s=>s.folderId!==fid).sort((a,b)=>(inFolder(a)?1:0)-(inFolder(b)?1:0)||a.title.localeCompare(b.title,'ko'));
+ if(!cand.length){toast('넣을 수 있는 다른 악보가 없어요');return}
+ const m=dialog({title:`"${fd.name}"에 악보 넣기`,body:`<label class="lib-search" style="margin:0">${ic('search')}<input id="pkQ" type="search" placeholder="제목, 가수 검색"></label>
+  <div class="pick-list" id="pkList">${cand.map(s=>{const cur=S.folders.find(f=>f.id===s.folderId);return `<label data-t="${esc((s.title+' '+s.composer).toLowerCase())}"><input type="checkbox" value="${s.id}"><b>${esc(s.title)}</b><small>${cur?esc(cur.name)+'에 있음':'폴더 없음'}</small></label>`}).join('')}</div>`,
+  buttons:[{label:'취소'},{label:'넣기',kind:'primary',onClick:async()=>{const ids=$$('#pkList input:checked').map(i=>i.value);if(!ids.length){toast('넣을 악보를 골라 주세요');return false}for(const id of ids){const s=scoreById(id);s.folderId=fid;await saveScore(s)}renderLib();toast(`"${fd.name}"에 ${ids.length}곡을 넣었어요`)}}]});
+ const okBtn=$('.dlg-actions .primary',m);const upd=()=>{const n=$$('#pkList input:checked').length;okBtn.textContent=n?`${n}곡 넣기`:'넣기'};
+ $$('#pkList input',m).forEach(i=>i.onchange=upd);$('#pkQ').oninput=e=>{const q=e.target.value.trim().toLowerCase();$$('#pkList label',m).forEach(l=>l.hidden=!!q&&!l.dataset.t.includes(q))}}
+function addFolder(cb,stay){promptDlg('새 폴더','폴더 이름 (예: 가요, 팝송, 레슨)','',async v=>{const fd={id:uid(),name:v,createdAt:Date.now()};S.folders.push(fd);await DB.put('folders',fd);if(!cb&&!stay&&L.open){goFilter('folder',fd.id);toast(`"${v}" 폴더를 만들었어요. '악보 넣기'로 채워 보세요`,3000)}else renderLib();cb&&cb(fd)})}
 function folderMenu(id){const fd=S.folders.find(f=>f.id===id);if(!fd)return;menu(fd.name,[
+ {label:'악보 넣기',icon:'plus',run:()=>pickIntoFolder(id)},
  {label:'이름 바꾸기',icon:'type',run:()=>promptDlg('폴더 이름 바꾸기','폴더 이름',fd.name,async v=>{fd.name=v;await DB.put('folders',fd);renderLib()})},
- {label:'폴더 삭제 (악보는 남아요)',icon:'trash',danger:true,run:()=>confirmDlg('폴더 삭제',`"${fd.name}" 폴더를 지울까요? 안에 있던 악보는 그대로 남아요.`,'삭제',async()=>{S.folders=S.folders.filter(f=>f!==fd);await DB.del('folders',id);for(const s of S.scores)if(s.folderId===id){s.folderId=null;await saveScore(s)}if(L.filter.id===id)L.filter={kind:'all',id:null};renderLib()})}])}
+ {label:'색 바꾸기',icon:'folder',run:()=>{const m=dialog({title:'폴더 색',body:`<div class="swatches">${COVERS.map(x=>`<button data-col="${x}" style="background:${x}" class="${x===folderColor(fd)?'on':''}" aria-label="폴더 색"></button>`).join('')}</div>`,buttons:[{label:'닫기'}]});$$('[data-col]',m).forEach(b=>b.onclick=async()=>{fd.color=b.dataset.col;await DB.put('folders',fd);closeDialog();renderLib()})}},
+ {label:'폴더 삭제 (악보는 남아요)',icon:'trash',danger:true,run:()=>confirmDlg('폴더 삭제',`"${fd.name}" 폴더를 지울까요? 안에 있던 악보는 '폴더 없는 악보'로 남아요.`,'삭제',async()=>{S.folders=S.folders.filter(f=>f!==fd);await DB.del('folders',id);for(const s of S.scores)if(s.folderId===id){s.folderId=null;await saveScore(s)}if(L.filter.id===id)L.filter={kind:'all',id:null};renderLib()})}])}
 function libSettings(){menu('서재',[{label:'악보 올리기',icon:'upload',run:()=>$('#fileIn').click()},{label:'새 폴더',icon:'folder',run:()=>addFolder()},{label:'새 곡목록',icon:'list',run:()=>addSet()},{label:'백업 파일로 저장',icon:'dl',run:exportBackup},{label:'백업 불러오기',icon:'upload',run:()=>$('#backupIn').click()},
  {label:`앱 테마: ${({system:'시스템',light:'밝게',dark:'어둡게'})[prefs.theme]}`,icon:'moon',run:()=>{prefs.theme={system:'light',light:'dark',dark:'system'}[prefs.theme];savePrefs();applyTheme();toast('테마를 바꿨어요')}}])}
 function infoDialog(s){if(!s)return;const c=s.cover||(s.cover={style:'color',color:COVERS[0]});let col=c.color,sty=c.style;
